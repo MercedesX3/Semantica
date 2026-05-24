@@ -1,0 +1,31 @@
+# Core API
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Data handling
+pydantic==2.8.2
+numpy==1.26.4
+pandas==2.2.2
+
+# Database
+sqlalchemy==2.0.32
+psycopg2-binary==2.9.9
+pgvector==0.3.6
+
+# NLP + ML
+torch
+transformers==4.44.2
+sentence-transformers==3.0.1
+scikit-learn==1.5.1
+
+# Text processing
+nltk==3.9.1
+spacy==3.7.5
+
+# Utilities
+python-dotenv==1.0.1
+tqdm==4.66.5
+
+# Optional (but useful for experimentation)
+matplotlib==3.9.2
+seaborn==0.13.2
