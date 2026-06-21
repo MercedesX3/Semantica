@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.book import Book, BookChunk
 from app.models.chunk_analysis import ChunkAnalysis
-from app.services.analysis_service import analyze_chunk, extract_themes
+from app.services.analysis_service import analyze_chunk, extract_themes, aggregate_themes
 from app.schemas.analysis import BookAnalysisResponse, ChunkAnalysisResult, ThemeArcResponse
 
 router = APIRouter()
@@ -76,6 +76,7 @@ def get_analysis(book_id: int, db: Session = Depends(get_db)):
             pacing=analysis.pacing,
             dialogue_density=analysis.dialogue_density,
             characters=analysis.characters,
+            themes=analysis.themes,
         )
         for analysis, chunk in rows
     ]
@@ -102,8 +103,9 @@ def get_themes(book_id: int, db: Session = Depends(get_db)):
         )
 
     analyses = [
-        {"emotion": a.emotion, "intensity": a.intensity}
+        {"emotion": a.emotion, "intensity": a.intensity, "themes": a.themes}
         for a, _ in rows
     ]
     theme_data = extract_themes(analyses)
-    return ThemeArcResponse(book_id=book_id, **theme_data)
+    top_themes = aggregate_themes(analyses)
+    return ThemeArcResponse(book_id=book_id, themes=top_themes, **theme_data)

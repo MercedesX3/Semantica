@@ -3,7 +3,7 @@ import sys
 import spacy
 from transformers import pipeline
 
-EMOTION_MODEL = "j-hartmann/emotion-english-distilroberta-base"
+EMOTION_MODEL = "SamLowe/roberta-base-go_emotions"
 
 emotion_classifier = pipeline(
     "text-classification",

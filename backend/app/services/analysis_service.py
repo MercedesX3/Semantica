@@ -4,33 +4,79 @@ from collections import Counter
 
 from app.ml.emotion_pipeline import emotion_classifier, nlp
 
+# GoEmotions' 27 emotions + neutral, bucketed into 3-way sentiment.
+# "Ambiguous" emotions from the GoEmotions paper (confusion, curiosity,
+# realization, surprise) are folded into neutral since they don't reliably
+# skew positive or negative on their own.
 SENTIMENT_MAP = {
-    "joy":      "positive",
-    "surprise": "positive",
-    "neutral":  "neutral",
-    "fear":     "negative",
-    "anger":    "negative",
-    "sadness":  "negative",
-    "disgust":  "negative",
+    "admiration":    "positive",
+    "amusement":     "positive",
+    "anger":         "negative",
+    "annoyance":     "negative",
+    "approval":      "positive",
+    "caring":        "positive",
+    "confusion":     "neutral",
+    "curiosity":     "neutral",
+    "desire":        "positive",
+    "disappointment": "negative",
+    "disapproval":   "negative",
+    "disgust":       "negative",
+    "embarrassment": "negative",
+    "excitement":    "positive",
+    "fear":          "negative",
+    "gratitude":     "positive",
+    "grief":         "negative",
+    "joy":           "positive",
+    "love":          "positive",
+    "nervousness":   "negative",
+    "neutral":       "neutral",
+    "optimism":      "positive",
+    "pride":         "positive",
+    "realization":   "neutral",
+    "relief":        "positive",
+    "remorse":       "negative",
+    "sadness":       "negative",
+    "surprise":      "neutral",
 }
 
-THEME_MAP = {
-    ("joy", "joy", "joy"):             "Triumphant Journey",
-    ("joy", "sadness", "joy"):         "Redemption Arc",
-    ("joy", "fear", "joy"):            "Hero's Trial",
-    ("joy", "anger", "joy"):           "Conflict and Resolution",
-    ("joy", "anger", "sadness"):       "Decline",
-    ("sadness", "sadness", "sadness"): "Tragedy",
-    ("sadness", "sadness", "joy"):     "From Despair to Hope",
-    ("sadness", "anger", "joy"):       "Transformation",
-    ("sadness", "joy", "sadness"):     "Bittersweet",
-    ("neutral", "neutral", "neutral"): "Meditative",
-    ("neutral", "sadness", "neutral"): "Introspective",
-    ("fear", "fear", "fear"):          "Sustained Tension",
-    ("fear", "anger", "joy"):          "Survival and Triumph",
-    ("anger", "anger", "anger"):       "Relentless Conflict",
-    ("anger", "sadness", "neutral"):   "Exhaustion and Acceptance",
+# Emotion-arc labels keyed by (beginning, middle, end) *sentiment* — raw
+# emotion triples don't scale once there are 28 possible labels per segment.
+SENTIMENT_THEME_MAP = {
+    ("positive", "positive", "positive"): "Triumphant Journey",
+    ("positive", "negative", "positive"): "Redemption Arc",
+    ("positive", "neutral", "positive"):  "Steady Optimism",
+    ("positive", "negative", "negative"): "Decline",
+    ("negative", "negative", "negative"): "Tragedy",
+    ("negative", "negative", "positive"): "From Despair to Hope",
+    ("negative", "positive", "positive"): "Transformation",
+    ("negative", "positive", "negative"): "Bittersweet",
+    ("neutral", "neutral", "neutral"):    "Meditative",
+    ("neutral", "negative", "neutral"):   "Introspective",
+    ("negative", "neutral", "negative"):  "Sustained Tension",
+    ("negative", "negative", "neutral"):  "Exhaustion and Acceptance",
 }
+
+# Words too generic to ever count as a "theme" even when they're frequent.
+THEME_STOPWORDS = {
+    "thing", "things", "way", "ways", "time", "times", "one", "lot",
+    "bit", "part", "something", "everything", "nothing", "someone",
+    "everyone", "anyone", "people", "day", "days",
+}
+
+
+def _extract_chunk_themes(doc, top_n: int = 3) -> list[str]:
+    """Surface topic keywords for a chunk from its most frequent meaningful noun chunks."""
+    counts = Counter()
+    for chunk in doc.noun_chunks:
+        head = chunk.root
+        if head.pos_ != "NOUN" or head.is_stop or head.is_punct:
+            continue
+        lemma = head.lemma_.lower().strip()
+        if len(lemma) < 3 or lemma in THEME_STOPWORDS:
+            continue
+        counts[lemma] += 1
+
+    return [lemma for lemma, _ in counts.most_common(top_n)]
 
 
 def analyze_chunk(text: str) -> dict:
@@ -57,13 +103,14 @@ def analyze_chunk(text: str) -> dict:
         prose_score = 0.5
     pacing = round(0.7 * prose_score + 0.3 * dialogue_density, 4)
 
-    # Characters via spaCy NER
+    # Characters via spaCy NER, themes via noun-chunk frequency (single parse, reused)
     doc = nlp(text)
     characters = list(dict.fromkeys(
         ent.text.strip()
         for ent in doc.ents
         if ent.label_ == "PERSON" and len(ent.text.strip()) > 1
     ))
+    themes = _extract_chunk_themes(doc)
 
     return {
         "emotion": dominant_emotion,
@@ -73,6 +120,7 @@ def analyze_chunk(text: str) -> dict:
         "pacing": pacing,
         "dialogue_density": dialogue_density,
         "characters": characters,
+        "themes": themes,
     }
 
 
@@ -103,7 +151,8 @@ def extract_themes(analyses: list[dict]) -> dict:
     middle = dominant_emotion(segments["middle"])
     end = dominant_emotion(segments["end"])
 
-    theme = THEME_MAP.get((beginning, middle, end), "Complex Narrative")
+    sentiment_arc = tuple(SENTIMENT_MAP.get(e, "neutral") for e in (beginning, middle, end))
+    theme = SENTIMENT_THEME_MAP.get(sentiment_arc, "Complex Narrative")
 
     return {
         "beginning_emotion": beginning,
@@ -111,3 +160,9 @@ def extract_themes(analyses: list[dict]) -> dict:
         "end_emotion": end,
         "theme_arc": theme,
     }
+
+
+def aggregate_themes(analyses: list[dict], top_n: int = 8) -> list[str]:
+    """Roll up the most common per-chunk topic themes across an entire book."""
+    counts = Counter(theme for a in analyses for theme in a.get("themes", []))
+    return [theme for theme, _ in counts.most_common(top_n)]

@@ -11,6 +11,7 @@ class ChunkAnalysisResult(BaseModel):
     pacing: float
     dialogue_density: float
     characters: list[str]
+    themes: list[str]
 
     model_config = {"from_attributes": True}
 
@@ -27,3 +28,4 @@ class ThemeArcResponse(BaseModel):
     middle_emotion: str
     end_emotion: str
     theme_arc: str
+    themes: list[str]

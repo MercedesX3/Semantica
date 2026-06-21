@@ -18,6 +18,7 @@ class ChunkAnalysis(Base):
     pacing = Column(Float, nullable=False)
     dialogue_density = Column(Float, nullable=False)
     characters = Column(JSONB, nullable=False)
+    themes = Column(JSONB, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     chunk = relationship("BookChunk", backref="analysis")

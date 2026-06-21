@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.book import Book, BookChunk
 from app.schemas.book import IngestRequest, IngestResponse, BookSummary, SearchResponse, SearchResultItem
@@ -58,15 +59,20 @@ def search_books(
     query_vector = get_embedding(q)
 
     sql = text("""
-        SELECT bc.book_id, bc.chunk_index, bc.text,
-               1 - (bc.embedding <=> CAST(:vec AS vector)) AS similarity,
-               b.title, b.author
-        FROM book_chunks bc
-        JOIN books b ON bc.book_id = b.id
-        ORDER BY bc.embedding <=> CAST(:vec AS vector)
+        SELECT * FROM (
+            SELECT bc.book_id, bc.chunk_index, bc.text,
+                   1 - (bc.embedding <=> CAST(:vec AS vector)) AS similarity,
+                   b.title, b.author
+            FROM book_chunks bc
+            JOIN books b ON bc.book_id = b.id
+        ) ranked
+        WHERE similarity >= :threshold
+        ORDER BY similarity DESC
         LIMIT :k
     """)
-    rows = db.execute(sql, {"vec": str(query_vector), "k": k}).fetchall()
+    rows = db.execute(
+        sql, {"vec": str(query_vector), "k": k, "threshold": settings.SEARCH_SIMILARITY_THRESHOLD}
+    ).fetchall()
 
     results = [
         SearchResultItem(
