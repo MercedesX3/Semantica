@@ -30,6 +30,7 @@ export interface VisualizationData {
   author: string;
   points: ChunkPoint[];
   variance_explained: number[];
+  axis_labels: string[] | null;
 }
 
 export async function searchBooks(query: string, k = 5): Promise<SearchResult[]> {
@@ -47,8 +48,13 @@ export async function getBooks(): Promise<BookSummary[]> {
   return res.json();
 }
 
-export async function getVisualization(bookId: number): Promise<VisualizationData> {
-  const res = await fetch(`${API_BASE}/visualization/books/${bookId}`);
+export type VisualizationMode = "topic" | "emotion";
+
+export async function getVisualization(
+  bookId: number,
+  mode: VisualizationMode = "topic"
+): Promise<VisualizationData> {
+  const res = await fetch(`${API_BASE}/visualization/books/${bookId}?mode=${mode}`);
   if (!res.ok) throw new Error(`Failed to load visualization: ${res.status}`);
   return res.json();
 }

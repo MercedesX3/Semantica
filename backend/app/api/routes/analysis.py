@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.book import Book, BookChunk
 from app.models.chunk_analysis import ChunkAnalysis
-from app.services.analysis_service import analyze_chunk, extract_themes, aggregate_themes
+from app.services.analysis_service import analyze_chunks, extract_themes, aggregate_themes
 from app.schemas.analysis import BookAnalysisResponse, ChunkAnalysisResult, ThemeArcResponse
 
 router = APIRouter()
@@ -25,10 +25,10 @@ def run_analysis(book_id: int, db: Session = Depends(get_db)):
     if not chunks:
         raise HTTPException(status_code=400, detail="Book has no chunks — ingest it first")
 
-    results = []
-    for chunk in chunks:
-        data = analyze_chunk(chunk.text)
+    analyses_data = analyze_chunks([chunk.text for chunk in chunks])
 
+    results = []
+    for chunk, data in zip(chunks, analyses_data):
         existing = db.query(ChunkAnalysis).filter_by(chunk_id=chunk.id).first()
         if existing:
             for key, val in data.items():

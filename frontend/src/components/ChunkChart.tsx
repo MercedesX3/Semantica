@@ -9,10 +9,11 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { VisualizationData, ChunkPoint } from "@/lib/api";
+import { VisualizationData, ChunkPoint, VisualizationMode } from "@/lib/api";
 
 interface ChunkChartProps {
   data: VisualizationData;
+  mode: VisualizationMode;
 }
 
 function getColor(index: number, total: number): string {
@@ -42,18 +43,24 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
   );
 }
 
-export default function ChunkChart({ data }: ChunkChartProps) {
+export default function ChunkChart({ data, mode }: ChunkChartProps) {
   const total = data.points.length;
   const variance = data.variance_explained;
   const totalVariance = Math.round((variance[0] + variance[1]) * 100);
+  const label = mode === "emotion" ? "Emotion" : "Topic";
 
   return (
     <div className="flex flex-col gap-3">
       <div>
         <h3 className="text-sm font-semibold text-zinc-800">{data.title}</h3>
         <p className="text-xs text-zinc-500">
-          {total} chunks · PCA explains {totalVariance}% of variance
+          {total} chunks · {label} PCA explains {totalVariance}% of variance
         </p>
+        {data.axis_labels && (
+          <p className="text-xs text-zinc-400 mt-0.5">
+            PC1: {data.axis_labels[0]} · PC2: {data.axis_labels[1]}
+          </p>
+        )}
       </div>
 
       <div className="w-full h-72">
@@ -65,7 +72,7 @@ export default function ChunkChart({ data }: ChunkChartProps) {
               tick={false}
               axisLine={false}
               tickLine={false}
-              label={{ value: "PC1", position: "insideBottom", offset: -2, fontSize: 10, fill: "#a1a1aa" }}
+              label={{ value: `${label} PC1`, position: "insideBottom", offset: -2, fontSize: 10, fill: "#a1a1aa" }}
             />
             <YAxis
               type="number"
@@ -73,7 +80,7 @@ export default function ChunkChart({ data }: ChunkChartProps) {
               tick={false}
               axisLine={false}
               tickLine={false}
-              label={{ value: "PC2", angle: -90, position: "insideLeft", offset: 10, fontSize: 10, fill: "#a1a1aa" }}
+              label={{ value: `${label} PC2`, angle: -90, position: "insideLeft", offset: 10, fontSize: 10, fill: "#a1a1aa" }}
             />
             <Tooltip content={<CustomTooltip />} />
             <Scatter data={data.points}>

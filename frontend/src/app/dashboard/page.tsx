@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { Tags, HeartPulse } from "lucide-react";
 import SearchBar from "@/components/SearchBar";
 import ResultCard from "@/components/ResultCard";
 import BookSelector from "@/components/BookSelector";
@@ -13,6 +14,7 @@ import {
   SearchResult,
   BookSummary,
   VisualizationData,
+  VisualizationMode,
 } from "@/lib/api";
 
 export default function Dashboard() {
@@ -25,6 +27,7 @@ export default function Dashboard() {
   const [showUpload, setShowUpload] = useState(false);
   const [books, setBooks] = useState<BookSummary[]>([]);
   const [selectedBookId, setSelectedBookId] = useState<number | null>(null);
+  const [vizMode, setVizMode] = useState<VisualizationMode>("topic");
   const [vizData, setVizData] = useState<VisualizationData | null>(null);
   const [vizLoading, setVizLoading] = useState(false);
   const [vizError, setVizError] = useState<string | null>(null);
@@ -32,6 +35,27 @@ export default function Dashboard() {
   useEffect(() => {
     getBooks().then(setBooks).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (selectedBookId == null) return;
+    let cancelled = false;
+    setVizData(null);
+    setVizError(null);
+    setVizLoading(true);
+    getVisualization(selectedBookId, vizMode)
+      .then((data) => {
+        if (!cancelled) setVizData(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setVizError(e instanceof Error ? e.message : "Failed to load visualization");
+      })
+      .finally(() => {
+        if (!cancelled) setVizLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBookId, vizMode]);
 
   async function handleSearch() {
     if (!query.trim()) return;
@@ -46,21 +70,6 @@ export default function Dashboard() {
       setResults([]);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleSelectBook(id: number) {
-    setSelectedBookId(id);
-    setVizData(null);
-    setVizError(null);
-    setVizLoading(true);
-    try {
-      const data = await getVisualization(id);
-      setVizData(data);
-    } catch (e) {
-      setVizError(e instanceof Error ? e.message : "Failed to load visualization");
-    } finally {
-      setVizLoading(false);
     }
   }
 
@@ -92,8 +101,31 @@ export default function Dashboard() {
         <BookSelector
           books={books}
           selectedId={selectedBookId}
-          onSelect={handleSelectBook}
+          onSelect={setSelectedBookId}
         />
+
+        {selectedBookId != null && (
+          <div className="flex gap-1 p-1 bg-zinc-100 rounded-lg">
+            <button
+              onClick={() => setVizMode("topic")}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors ${
+                vizMode === "topic" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+              }`}
+            >
+              <Tags className="w-3.5 h-3.5" />
+              Topic
+            </button>
+            <button
+              onClick={() => setVizMode("emotion")}
+              className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors ${
+                vizMode === "emotion" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+              }`}
+            >
+              <HeartPulse className="w-3.5 h-3.5" />
+              Emotion
+            </button>
+          </div>
+        )}
 
         {vizLoading && (
           <p className="text-xs text-zinc-400 text-center py-4">Loading visualization...</p>
@@ -104,7 +136,7 @@ export default function Dashboard() {
         )}
 
         {vizData && !vizLoading && (
-          <ChunkChart data={vizData} />
+          <ChunkChart data={vizData} mode={vizMode} />
         )}
 
         {!selectedBookId && !vizLoading && books.length > 0 && (

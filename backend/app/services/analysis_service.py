@@ -79,49 +79,63 @@ def _extract_chunk_themes(doc, top_n: int = 3) -> list[str]:
     return [lemma for lemma, _ in counts.most_common(top_n)]
 
 
+def analyze_chunks(texts: list[str], batch_size: int = 32) -> list[dict]:
+    """Analyze many chunks at once. Batching the model calls (instead of one
+    chunk at a time) is the difference between seconds and minutes on a
+    300+ chunk book — unbatched calls pay full model-dispatch overhead per chunk."""
+    if not texts:
+        return []
+
+    raw_results = emotion_classifier(texts, batch_size=batch_size)
+    docs = list(nlp.pipe(texts, batch_size=batch_size))
+
+    results = []
+    for text, raw, doc in zip(texts, raw_results, docs):
+        emotion_scores = {item["label"].lower(): round(item["score"], 4) for item in raw}
+        dominant_emotion = max(emotion_scores, key=emotion_scores.get)
+        intensity = round(emotion_scores[dominant_emotion], 4)
+        sentiment = SENTIMENT_MAP.get(dominant_emotion, "neutral")
+
+        # Dialogue density
+        matches = re.findall(r'"[^"]*"', text)
+        quoted_chars = sum(len(m) for m in matches)
+        dialogue_density = round(min(quoted_chars / len(text), 1.0), 4) if text else 0.0
+
+        # Pacing
+        sentences = nltk.sent_tokenize(text)
+        if sentences:
+            words = text.split()
+            avg_len = len(words) / len(sentences)
+            clamped = max(5.0, min(40.0, avg_len))
+            prose_score = 1.0 - (clamped - 5.0) / 35.0
+        else:
+            prose_score = 0.5
+        pacing = round(0.7 * prose_score + 0.3 * dialogue_density, 4)
+
+        # Characters via spaCy NER, themes via noun-chunk frequency (same parse, reused)
+        characters = list(dict.fromkeys(
+            ent.text.strip()
+            for ent in doc.ents
+            if ent.label_ == "PERSON" and len(ent.text.strip()) > 1
+        ))
+        themes = _extract_chunk_themes(doc)
+
+        results.append({
+            "emotion": dominant_emotion,
+            "emotion_scores": emotion_scores,
+            "sentiment": sentiment,
+            "intensity": intensity,
+            "pacing": pacing,
+            "dialogue_density": dialogue_density,
+            "characters": characters,
+            "themes": themes,
+        })
+
+    return results
+
+
 def analyze_chunk(text: str) -> dict:
-    # Emotion
-    raw = emotion_classifier(text)[0]
-    emotion_scores = {item["label"].lower(): round(item["score"], 4) for item in raw}
-    dominant_emotion = max(emotion_scores, key=emotion_scores.get)
-    intensity = round(emotion_scores[dominant_emotion], 4)
-    sentiment = SENTIMENT_MAP.get(dominant_emotion, "neutral")
-
-    # Dialogue density
-    matches = re.findall(r'"[^"]*"', text)
-    quoted_chars = sum(len(m) for m in matches)
-    dialogue_density = round(min(quoted_chars / len(text), 1.0), 4) if text else 0.0
-
-    # Pacing
-    sentences = nltk.sent_tokenize(text)
-    if sentences:
-        words = text.split()
-        avg_len = len(words) / len(sentences)
-        clamped = max(5.0, min(40.0, avg_len))
-        prose_score = 1.0 - (clamped - 5.0) / 35.0
-    else:
-        prose_score = 0.5
-    pacing = round(0.7 * prose_score + 0.3 * dialogue_density, 4)
-
-    # Characters via spaCy NER, themes via noun-chunk frequency (single parse, reused)
-    doc = nlp(text)
-    characters = list(dict.fromkeys(
-        ent.text.strip()
-        for ent in doc.ents
-        if ent.label_ == "PERSON" and len(ent.text.strip()) > 1
-    ))
-    themes = _extract_chunk_themes(doc)
-
-    return {
-        "emotion": dominant_emotion,
-        "emotion_scores": emotion_scores,
-        "sentiment": sentiment,
-        "intensity": intensity,
-        "pacing": pacing,
-        "dialogue_density": dialogue_density,
-        "characters": characters,
-        "themes": themes,
-    }
+    return analyze_chunks([text])[0]
 
 
 def extract_themes(analyses: list[dict]) -> dict:
