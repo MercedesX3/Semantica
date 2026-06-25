@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Tags, HeartPulse } from "lucide-react";
+import BookLookupHeader from "@/components/BookLookupHeader";
 import SearchBar from "@/components/SearchBar";
 import ResultCard from "@/components/ResultCard";
 import BookSelector from "@/components/BookSelector";
@@ -74,7 +75,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex">
+    <div className="min-h-screen bg-zinc-50 flex flex-col">
       {showUpload && (
         <BookUploadModal
           onClose={() => setShowUpload(false)}
@@ -85,6 +86,9 @@ export default function Dashboard() {
         />
       )}
 
+      <BookLookupHeader />
+
+      <div className="flex flex-1">
       {/* Sidebar */}
       <aside className="w-72 shrink-0 border-r border-zinc-200 bg-white flex flex-col p-4 gap-4">
         <div className="flex items-center justify-between">
@@ -188,6 +192,7 @@ export default function Dashboard() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }

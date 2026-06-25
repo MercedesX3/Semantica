@@ -58,3 +58,19 @@ export async function getVisualization(
   if (!res.ok) throw new Error(`Failed to load visualization: ${res.status}`);
   return res.json();
 }
+
+export interface ExternalBookResult {
+  key: string;
+  title: string;
+  author: string;
+  cover_url: string | null;
+}
+
+export async function searchOpenLibrary(query: string, limit = 8): Promise<ExternalBookResult[]> {
+  const res = await fetch(
+    `${API_BASE}/open-library/search?q=${encodeURIComponent(query)}&limit=${limit}`
+  );
+  if (!res.ok) throw new Error(`Open Library search failed: ${res.status}`);
+  const data = await res.json();
+  return data.results;
+}
