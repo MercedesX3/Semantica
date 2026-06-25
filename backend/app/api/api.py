@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.routes import books, embeddings, recommendations, visualization, analysis, themes, open_library
+from app.api.routes import books, embeddings, recommendations, visualization, analysis, themes, open_library, favorites
 
 api_router = APIRouter()
 
@@ -10,3 +10,4 @@ api_router.include_router(visualization.router, prefix="/visualization", tags=["
 api_router.include_router(analysis.router, prefix="/analysis", tags=["Analysis"])
 api_router.include_router(themes.router, prefix="/themes", tags=["Themes"])
 api_router.include_router(open_library.router, prefix="/open-library", tags=["Open Library"])
+api_router.include_router(favorites.router, prefix="/favorites", tags=["Favorites"])

@@ -74,3 +74,38 @@ export async function searchOpenLibrary(query: string, limit = 8): Promise<Exter
   const data = await res.json();
   return data.results;
 }
+
+export interface FavoriteBook {
+  id: number;
+  open_library_key: string;
+  title: string;
+  author: string;
+  cover_url: string | null;
+  created_at: string;
+}
+
+export async function getFavorites(): Promise<FavoriteBook[]> {
+  const res = await fetch(`${API_BASE}/favorites/`);
+  if (!res.ok) throw new Error(`Failed to load favorites: ${res.status}`);
+  return res.json();
+}
+
+export async function addFavorite(book: ExternalBookResult): Promise<FavoriteBook> {
+  const res = await fetch(`${API_BASE}/favorites/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      open_library_key: book.key,
+      title: book.title,
+      author: book.author,
+      cover_url: book.cover_url,
+    }),
+  });
+  if (!res.ok) throw new Error(`Failed to add favorite: ${res.status}`);
+  return res.json();
+}
+
+export async function removeFavorite(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/favorites/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to remove favorite: ${res.status}`);
+}
