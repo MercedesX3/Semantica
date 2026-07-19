@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
+import Logo from "@/components/Logo";
+import Btn from "@/components/ui/Btn";
 
 export default function Login() {
   const router = useRouter();
@@ -13,62 +13,71 @@ export default function Login() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // Auth is not implemented yet — proceed straight to the app.
-    router.push("/dashboard");
+    router.push("/home");
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-50">
-      <Header />
+    <div className="min-h-screen flex">
+      <div className="flex-1 flex flex-col px-16 py-12">
+        <Logo size={40} />
 
-      <main className="flex-1 flex items-center justify-center px-6 py-16">
-        <div className="w-full max-w-sm bg-white border border-zinc-200 rounded-2xl p-8 flex flex-col gap-6">
-          <div className="text-center">
-            <h1 className="font-serif italic text-2xl font-bold text-zinc-900">Welcome back</h1>
-            <p className="text-sm text-zinc-500 mt-1">Log in to continue to Semantica</p>
-          </div>
+        <div className="flex-1 flex flex-col justify-center max-w-md mt-10">
+          <h1 className="text-4xl font-bold font-sans mb-8">Sign into Semantica</h1>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-zinc-500">Email</label>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-base font-semibold font-sans">Email*</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="px-3 py-2 rounded-lg border border-zinc-200 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+                placeholder="email"
+                className="h-12 px-4 bg-stone-50 rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] outline-2 -outline-offset-2 outline-black text-base font-semibold font-sans placeholder:text-black/30"
               />
             </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-zinc-500">Password</label>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-base font-semibold font-sans">Password*</label>
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="px-3 py-2 rounded-lg border border-zinc-200 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+                placeholder="password"
+                className="h-12 px-4 bg-stone-50 rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] outline-2 -outline-offset-2 outline-black text-base font-semibold font-sans placeholder:text-black/30"
               />
             </div>
-            <button
-              type="submit"
-              className="w-full px-4 py-2 rounded-lg bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-700 transition-colors"
-            >
-              Log In
-            </button>
+
+            <Btn type="submit" variant="primary" size="lg" className="w-full mt-2">
+              Sign In
+            </Btn>
+
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-zinc-300" />
+              <span className="text-sm font-semibold font-sans text-zinc-400">OR</span>
+              <div className="flex-1 h-px bg-zinc-300" />
+            </div>
+
+            <Btn type="button" variant="primary" size="lg" className="w-full">
+              Sign In with Google
+            </Btn>
+
+            <Btn type="button" variant="primary" size="lg" className="w-full">
+              Sign In with ____
+            </Btn>
           </form>
 
-          <p className="text-center text-sm text-zinc-500">
+          <p className="mt-8 text-base font-sans">
             Don&apos;t have an account?{" "}
-            <Link href="/signup" className="font-medium text-zinc-900 hover:underline">
-              Get Started
+            <Link href="/signup" className="font-bold hover:underline">
+              Create one
             </Link>
           </p>
         </div>
-      </main>
+      </div>
 
-      <Footer />
+      <div className="w-[42%] bg-neutral-200 shrink-0" />
     </div>
   );
 }

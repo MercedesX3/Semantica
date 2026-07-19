@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { EB_Garamond, DM_Sans } from "next/font/google";
+import { EB_Garamond, DM_Sans, Sometype_Mono } from "next/font/google";
 import "./globals.css";
 
 const ebGaramond = EB_Garamond({
@@ -10,6 +10,11 @@ const ebGaramond = EB_Garamond({
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
+  subsets: ["latin"],
+});
+
+const sometypeMono = Sometype_Mono({
+  variable: "--font-sometype-mono",
   subsets: ["latin"],
 });
 
@@ -26,9 +31,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${ebGaramond.variable} ${dmSans.variable} h-full antialiased`}
+      className={`${ebGaramond.variable} ${dmSans.variable} ${sometypeMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col bg-white">{children}</body>
     </html>
   );
 }
