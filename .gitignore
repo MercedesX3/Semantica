@@ -4,6 +4,6 @@ node_modules/
 __pycache__/
 .next/
 .DS_Store
-books/
+/books/
 styling.md
 Screens-from-Figma/
