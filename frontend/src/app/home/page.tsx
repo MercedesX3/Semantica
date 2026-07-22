@@ -70,12 +70,12 @@ export default function HomePage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] flex flex-col">
       <AppNav />
 
       <div className="flex flex-1">
-        <main className="flex-1 px-10 py-10 overflow-y-auto">
-          <h1 className="text-6xl font-bold font-sans mb-8">Discover your next read</h1>
+        <main className="flex-1 px-12 py-12 overflow-y-auto">
+          <h1 className="text-6xl font-bold font-sans mb-10">Discover your next read</h1>
 
           <section className="mb-10">
             <h2 className="text-3xl font-bold font-sans mb-6">Your Reading DNA</h2>
@@ -125,7 +125,7 @@ export default function HomePage() {
           </section>
         </main>
 
-        <aside className="w-80 shrink-0 border-l-2 border-black px-6 py-10 overflow-y-auto">
+        <aside className="w-80 shrink-0 border-l-2 border-black px-8 py-12 overflow-y-auto">
           <h2 className="text-2xl font-bold font-sans mb-6">Currently Reading</h2>
           <div className="flex flex-col gap-6">
             {CURRENTLY_READING.map((book) => (

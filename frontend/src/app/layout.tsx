@@ -33,7 +33,7 @@ export default function RootLayout({
       lang="en"
       className={`${ebGaramond.variable} ${dmSans.variable} ${sometypeMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-white">{children}</body>
+      <body className="min-h-full flex flex-col bg-zinc-100">{children}</body>
     </html>
   );
 }

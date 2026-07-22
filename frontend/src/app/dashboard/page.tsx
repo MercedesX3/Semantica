@@ -75,7 +75,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex flex-col">
+    <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] bg-zinc-50 flex flex-col">
       {showUpload && (
         <BookUploadModal
           onClose={() => setShowUpload(false)}

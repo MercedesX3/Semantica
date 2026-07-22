@@ -108,7 +108,7 @@ export default function BookDetailPage() {
   const book = BOOK_DETAILS[id] ?? BOOK_DETAILS["1"];
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="mx-8 my-4 h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
       <AppNav />
 
       <div className="flex flex-1 overflow-hidden">
@@ -184,7 +184,7 @@ export default function BookDetailPage() {
         <div className="flex-1 flex flex-col overflow-hidden border-l-2 border-black">
 
           {/* Tabs — right-aligned */}
-          <div className="px-6 py-4 flex items-center justify-end gap-8 border-b-2 border-black shrink-0">
+          <div className="px-8 py-5 flex items-center justify-end gap-8 border-b-2 border-black shrink-0">
             <button className="text-base font-bold font-sans underline decoration-2 underline-offset-4">
               REVIEWS
             </button>
@@ -193,7 +193,7 @@ export default function BookDetailPage() {
           </div>
 
           {/* Search */}
-          <div className="px-6 py-4 flex items-center gap-3 border-b-2 border-black shrink-0">
+          <div className="px-8 py-4 flex items-center gap-3 border-b-2 border-black shrink-0">
             <div className="flex-1 h-11 px-4 bg-stone-50 rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] outline-2 -outline-offset-2 outline-black flex items-center gap-2.5">
               <Search className="w-5 h-5 shrink-0" />
               <input
@@ -207,7 +207,7 @@ export default function BookDetailPage() {
           {/* Reviews */}
           <div className="flex-1 overflow-y-auto divide-y divide-zinc-100">
             {DUMMY_REVIEWS.map((r, i) => (
-              <div key={i} className="flex gap-5 px-6 py-5">
+              <div key={i} className="flex gap-5 px-8 py-6">
                 {/* Reviewer */}
                 <div className="flex flex-col items-center gap-1 shrink-0 w-24 text-center">
                   <div className="w-12 h-12 bg-black rounded-full mb-1" />

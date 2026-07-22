@@ -73,10 +73,10 @@ function PlaylistCard({ playlist }: { playlist: Playlist }) {
 
 export default function SoundtracksPage() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] flex flex-col">
       <AppNav />
 
-      <main className="flex-1 px-10 py-10 pb-24">
+      <main className="flex-1 px-12 py-12 pb-28">
         <h1 className="text-6xl font-bold font-sans mb-8">Book Soundtracks</h1>
 
         <section className="mb-10">

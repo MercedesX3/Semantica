@@ -237,10 +237,10 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] flex flex-col">
       <AppNav />
 
-      <main className="flex-1 flex flex-col items-center px-8 py-12 gap-10">
+      <main className="flex-1 flex flex-col items-center px-12 py-16 gap-10">
         <div className="flex gap-2">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => (
             <div
