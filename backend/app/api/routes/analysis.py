@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.book import Book, BookChunk
 from app.models.chunk_analysis import ChunkAnalysis
+from app.models.book_dna import BookDNA
 from app.services.analysis_service import persist_chunk_analyses, extract_themes, aggregate_themes
-from app.schemas.analysis import BookAnalysisResponse, ChunkAnalysisResult, ThemeArcResponse
+from app.schemas.analysis import BookAnalysisResponse, ChunkAnalysisResult, ThemeArcResponse, BookDNAResponse
 
 router = APIRouter()
 
@@ -88,3 +89,20 @@ def get_themes(book_id: int, db: Session = Depends(get_db)):
     theme_data = extract_themes(analyses)
     top_themes = aggregate_themes(analyses)
     return ThemeArcResponse(book_id=book_id, themes=top_themes, **theme_data)
+
+
+@router.get("/books/{book_id}/dna", response_model=BookDNAResponse)
+def get_book_dna(book_id: int, db: Session = Depends(get_db)):
+    dna = db.query(BookDNA).filter_by(book_id=book_id).first()
+    if dna is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No DNA found. It is built automatically after ingest; poll GET /themes/jobs/{id}.",
+        )
+    return BookDNAResponse(
+        book_id=book_id,
+        emotion_profile=dna.emotion_profile,
+        theme_profile=dna.theme_profile,
+        style_profile=dna.style_profile,
+        arc=dna.arc,
+    )

@@ -4,15 +4,32 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.book import Book
 from app.models.book_dna import BookDNA
+from app.models.favorite_book import FavoriteBook
 from app.schemas.recommendation import (
     RecommendationItem,
     SimilarBooksResponse,
     ForMeRequest,
     ForMeResponse,
+    ForYouItem,
+    ForYouResponse,
 )
 from app.services.recommendation_service import similar_books, recommend_for_user
+from app.services.discovery_service import for_you_recommendations
 
 router = APIRouter()
+
+
+@router.get("/for-you", response_model=ForYouResponse)
+def get_for_you(
+    limit: int = Query(default=10, ge=1, le=30),
+    db: Session = Depends(get_db),
+):
+    """Cover-rich recommendations seeded from the user's favorites (falls back
+    to an assumed favorites set when none exist), resolved via Open Library."""
+    favorites = db.query(FavoriteBook).all()
+    seed_titles = [f.title for f in favorites] or None
+    results = for_you_recommendations(seed_titles, limit)
+    return ForYouResponse(results=[ForYouItem(**r) for r in results])
 
 
 @router.get("/books/{book_id}", response_model=SimilarBooksResponse)

@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AppNav from "@/components/AppNav";
 import BookCard, { BookData } from "@/components/ui/BookCard";
 import GenreTag from "@/components/ui/GenreTag";
 import { Star } from "lucide-react";
+import { getForYouRecommendations } from "@/lib/api";
 
 const DNA_GENRES = [
   { label: "Romance", color: "bg-pink-300" },
@@ -69,6 +71,25 @@ function CurrentlyReadingCard({ book }: { book: BookData }) {
 export default function HomePage() {
   const router = useRouter();
 
+  // Start with the mock picks; swap in real, cover-rich recs once they load.
+  const [picks, setPicks] = useState<BookData[]>(PICKS);
+  useEffect(() => {
+    getForYouRecommendations(8)
+      .then((recs) => {
+        if (recs.length === 0) return;
+        setPicks(
+          recs.map((r, i) => ({
+            id: r.key ? (r.key.split("/").pop() ?? String(i)) : String(i),
+            title: r.title,
+            author: r.author,
+            genre: r.genre ?? undefined,
+            coverUrl: r.cover_url,
+          })),
+        );
+      })
+      .catch(() => {/* keep mock picks on failure */});
+  }, []);
+
   return (
     <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] flex flex-col">
       <AppNav />
@@ -94,7 +115,7 @@ export default function HomePage() {
           <section className="mb-10">
             <h2 className="text-3xl font-bold font-sans mb-6">Picks for You</h2>
             <div className="flex gap-6 overflow-x-auto pb-2">
-              {PICKS.map((book) => (
+              {picks.map((book) => (
                 <div key={book.id} className="shrink-0">
                   <BookCard
                     book={book}

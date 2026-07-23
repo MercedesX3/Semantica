@@ -1,9 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Heart, Star, ChevronDown, Search } from "lucide-react";
 import AppNav from "@/components/AppNav";
 import Btn from "@/components/ui/Btn";
+import { getBookDNA, BookDNA } from "@/lib/api";
 
 const BOOK_DETAILS: Record<string, {
   title: string; author: string; genre: string; rating: number;
@@ -30,10 +32,18 @@ const SENTIMENT_PTS = [
   [60, 80], [72, 42], [85, 90], [100, 58],
 ];
 
-function EmotionalDNA({ pacing, themes }: { pacing: number; themes: string[] }) {
+function EmotionalDNA({
+  pacing,
+  themes,
+  sentimentPoints = SENTIMENT_PTS,
+}: {
+  pacing: number;
+  themes: string[];
+  sentimentPoints?: number[][];
+}) {
   const W = 500, H = 96;
   const mid = H * 0.55; // dashed baseline sits at 55% from top
-  const pts = SENTIMENT_PTS.map(([x, y]) => `${(x / 100) * W},${H - (y / 100) * H}`).join(" ");
+  const pts = sentimentPoints.map(([x, y]) => `${(x / 100) * W},${H - (y / 100) * H}`).join(" ");
 
   return (
     <div className="bg-stone-50 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] outline-1 -outline-offset-1 outline-black p-4 flex flex-col gap-3">
@@ -107,6 +117,27 @@ export default function BookDetailPage() {
   const { id } = useParams<{ id: string }>();
   const book = BOOK_DETAILS[id] ?? BOOK_DETAILS["1"];
 
+  const [dna, setDna] = useState<BookDNA | null>(null);
+  useEffect(() => {
+    const numId = Number(id);
+    if (!Number.isFinite(numId)) return;
+    getBookDNA(numId).then(setDna).catch(() => setDna(null));
+  }, [id]);
+
+  // Real DNA when available; fall back to the mock values otherwise (the
+  // demo books 1–5 aren't ingested, so they have no DNA).
+  const sentimentPoints = dna
+    ? dna.arc.sentiment_series.map((v, i, arr) => [
+        arr.length > 1 ? (i / (arr.length - 1)) * 100 : 50,
+        ((v + 1) / 2) * 100,
+      ])
+    : undefined;
+  const pacingValue = dna ? Math.round(dna.style_profile.avg_pacing * 100) : book.pacing;
+  const themeList =
+    dna && dna.theme_profile.top.length > 0
+      ? dna.theme_profile.top.map((t) => t.theme)
+      : book.themes;
+
   return (
     <div className="mx-8 my-4 h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
       <AppNav />
@@ -175,7 +206,7 @@ export default function BookDetailPage() {
             </div>
 
             {/* Emotional DNA */}
-            <EmotionalDNA pacing={book.pacing} themes={book.themes} />
+            <EmotionalDNA pacing={pacingValue} themes={themeList} sentimentPoints={sentimentPoints} />
 
           </div>
         </div>

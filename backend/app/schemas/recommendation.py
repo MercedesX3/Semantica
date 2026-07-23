@@ -25,3 +25,16 @@ class ForMeRequest(BaseModel):
 
 class ForMeResponse(BaseModel):
     results: list[RecommendationItem]
+
+
+class ForYouItem(BaseModel):
+    key: str | None = None
+    title: str
+    author: str
+    cover_url: str | None = None
+    genre: str | None = None
+    subject: str | None = None
+
+
+class ForYouResponse(BaseModel):
+    results: list[ForYouItem]

@@ -59,6 +59,61 @@ export async function getVisualization(
   return res.json();
 }
 
+export interface BookDNA {
+  book_id: number;
+  emotion_profile: {
+    mean_scores: Record<string, number>;
+    beginning_emotion: string;
+    middle_emotion: string;
+    end_emotion: string;
+    arc_label: string;
+    volatility: number;
+    peak_emotion: string;
+  };
+  theme_profile: {
+    vector: number[];
+    top: { theme: string; confidence: number }[];
+  };
+  style_profile: {
+    avg_pacing: number;
+    pacing_variance: number;
+    avg_dialogue_density: number;
+    character_count: number;
+    chunk_count: number;
+    avg_word_count: number;
+  };
+  arc: {
+    sentiment_series: number[];
+    intensity_series: number[];
+    pacing_series: number[];
+  };
+}
+
+/** Returns the book's DNA, or null if it hasn't been built yet (404). */
+export async function getBookDNA(bookId: number): Promise<BookDNA | null> {
+  const res = await fetch(`${API_BASE}/analysis/books/${bookId}/dna`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to load DNA: ${res.status}`);
+  return res.json();
+}
+
+export interface ForYouBook {
+  key: string | null;
+  title: string;
+  author: string;
+  cover_url: string | null;
+  genre: string | null;
+  subject: string | null;
+}
+
+/** Cover-rich recommendations seeded from the user's favorites. */
+export async function getForYouRecommendations(limit = 10): Promise<ForYouBook[]> {
+  const res = await fetch(`${API_BASE}/recommendations/for-you?limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed to load recommendations: ${res.status}`);
+  const data = await res.json();
+  return data.results;
+}
+
 export interface ExternalBookResult {
   key: string;
   title: string;

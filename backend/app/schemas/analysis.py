@@ -29,3 +29,13 @@ class ThemeArcResponse(BaseModel):
     end_emotion: str
     theme_arc: str
     themes: list[str]
+
+
+class BookDNAResponse(BaseModel):
+    book_id: int
+    emotion_profile: dict
+    theme_profile: dict
+    style_profile: dict
+    arc: dict
+
+    model_config = {"from_attributes": True}
