@@ -12,6 +12,7 @@ class IngestResponse(BaseModel):
     title: str
     author: str
     chunk_count: int
+    analysis_job_id: int
     message: str
 
 

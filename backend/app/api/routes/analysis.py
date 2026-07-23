@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.book import Book, BookChunk
 from app.models.chunk_analysis import ChunkAnalysis
-from app.services.analysis_service import analyze_chunks, extract_themes, aggregate_themes
+from app.services.analysis_service import persist_chunk_analyses, extract_themes, aggregate_themes
 from app.schemas.analysis import BookAnalysisResponse, ChunkAnalysisResult, ThemeArcResponse
 
 router = APIRouter()
@@ -16,33 +16,12 @@ def run_analysis(book_id: int, db: Session = Depends(get_db)):
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    chunks = (
-        db.query(BookChunk)
-        .filter(BookChunk.book_id == book_id)
-        .order_by(BookChunk.chunk_index)
-        .all()
-    )
-    if not chunks:
+    results_data = persist_chunk_analyses(db, book_id)
+    if not results_data:
         raise HTTPException(status_code=400, detail="Book has no chunks — ingest it first")
 
-    analyses_data = analyze_chunks([chunk.text for chunk in chunks])
-
-    results = []
-    for chunk, data in zip(chunks, analyses_data):
-        existing = db.query(ChunkAnalysis).filter_by(chunk_id=chunk.id).first()
-        if existing:
-            for key, val in data.items():
-                setattr(existing, key, val)
-        else:
-            db.add(ChunkAnalysis(chunk_id=chunk.id, **data))
-
-        results.append(ChunkAnalysisResult(
-            chunk_id=chunk.id,
-            chunk_index=chunk.chunk_index,
-            **data,
-        ))
-
     db.commit()
+    results = [ChunkAnalysisResult(**data) for data in results_data]
     return BookAnalysisResponse(book_id=book_id, chunk_count=len(results), results=results)
 
 

@@ -31,6 +31,14 @@ with engine.connect() as conn:
 
 Base.metadata.create_all(bind=engine)
 
+# Lightweight, idempotent column adds for existing databases (no Alembic in
+# this project). create_all only creates missing tables, not missing columns.
+with engine.connect() as conn:
+    conn.execute(text("ALTER TABLE book_chunks ADD COLUMN IF NOT EXISTS chapter_index INTEGER"))
+    conn.execute(text("ALTER TABLE book_chunks ADD COLUMN IF NOT EXISTS chapter_title VARCHAR(200)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_book_chunks_chapter_index ON book_chunks (chapter_index)"))
+    conn.commit()
+
 app.include_router(api_router)
 
 

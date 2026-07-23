@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.book import Book, BookChunk
+from app.models.analysis_job import BookAnalysisJob
 from app.schemas.book import IngestRequest, IngestResponse, BookSummary, SearchResponse, SearchResultItem
-from app.services.text_processing_service import chunk_text
+from app.services.text_processing_service import chunk_text_by_chapter
 from app.services.embedding_service import embed_chunks
+from app.services.analysis_job_service import run_dna_pipeline_job
 from app.ml.embedding_pipeline import get_embedding
 
 router = APIRouter()
@@ -19,34 +21,44 @@ def list_books(db: Session = Depends(get_db)):
 
 
 @router.post("/ingest", response_model=IngestResponse, status_code=201)
-def ingest_book(body: IngestRequest, db: Session = Depends(get_db)):
+def ingest_book(body: IngestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     book = Book(title=body.title, author=body.author, raw_text=body.text)
     db.add(book)
     db.flush()  # get book.id without committing
 
-    chunks = chunk_text(body.text)
-    embeddings = embed_chunks(chunks)
+    chunk_specs = chunk_text_by_chapter(body.text)
+    embeddings = embed_chunks([spec["text"] for spec in chunk_specs])
 
     chunk_rows = [
         BookChunk(
             book_id=book.id,
-            chunk_index=i,
-            text=chunk,
-            word_count=len(chunk.split()),
+            chunk_index=spec["chunk_index"],
+            chapter_index=spec["chapter_index"],
+            chapter_title=spec["chapter_title"],
+            text=spec["text"],
+            word_count=len(spec["text"].split()),
             embedding=embedding,
         )
-        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+        for spec, embedding in zip(chunk_specs, embeddings)
     ]
     db.add_all(chunk_rows)
-    book.chunk_count = len(chunks)
+    book.chunk_count = len(chunk_specs)
+
+    # Heavy DNA extraction (emotion + themes + aggregation) runs in the
+    # background so ingest returns immediately; poll GET /themes/jobs/{id}.
+    job = BookAnalysisJob(book_id=book.id, status="pending")
+    db.add(job)
     db.commit()
+
+    background_tasks.add_task(run_dna_pipeline_job, job.id, book.id)
 
     return IngestResponse(
         id=book.id,
         title=book.title,
         author=book.author,
         chunk_count=book.chunk_count,
-        message="Book ingested successfully",
+        analysis_job_id=job.id,
+        message="Book ingested; DNA analysis running in background",
     )
 
 

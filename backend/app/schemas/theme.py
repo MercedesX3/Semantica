@@ -12,6 +12,7 @@ class ThemeJobStatusResponse(BaseModel):
     job_id: int
     book_id: int
     status: str
+    stage: str | None = None
     error: str | None
     created_at: datetime
     completed_at: datetime | None

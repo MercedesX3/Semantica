@@ -23,7 +23,10 @@ class BookChunk(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     book_id = Column(Integer, ForeignKey("books.id", ondelete="CASCADE"), nullable=False)
-    chunk_index = Column(Integer, nullable=False)
+    chunk_index = Column(Integer, nullable=False)  # global, sequential across the whole book
+    # Aligns with ChapterTheme.chapter_index (both derive from split_into_chapters).
+    chapter_index = Column(Integer, index=True)
+    chapter_title = Column(String(200))
     text = Column(Text, nullable=False)
     word_count = Column(Integer)
     embedding = Column(Vector(384))

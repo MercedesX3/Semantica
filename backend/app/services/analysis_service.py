@@ -1,8 +1,11 @@
 import re
 import nltk
 from collections import Counter
+from sqlalchemy.orm import Session
 
 from app.ml.emotion_pipeline import emotion_classifier, nlp
+from app.models.book import BookChunk
+from app.models.chunk_analysis import ChunkAnalysis
 
 # GoEmotions' 27 emotions + neutral, bucketed into 3-way sentiment.
 # "Ambiguous" emotions from the GoEmotions paper (confusion, curiosity,
@@ -136,6 +139,37 @@ def analyze_chunks(texts: list[str], batch_size: int = 32) -> list[dict]:
 
 def analyze_chunk(text: str) -> dict:
     return analyze_chunks([text])[0]
+
+
+def persist_chunk_analyses(db: Session, book_id: int) -> list[dict]:
+    """Analyze every chunk of a book and upsert the results into
+    chunk_analyses. Shared by the manual /analysis endpoint and the DNA
+    pipeline job. Flushes but does not commit — the caller owns the
+    transaction boundary. Returns per-chunk dicts (with chunk_id and
+    chunk_index attached) for building an API response."""
+    chunks = (
+        db.query(BookChunk)
+        .filter(BookChunk.book_id == book_id)
+        .order_by(BookChunk.chunk_index)
+        .all()
+    )
+    if not chunks:
+        return []
+
+    analyses_data = analyze_chunks([chunk.text for chunk in chunks])
+
+    results = []
+    for chunk, data in zip(chunks, analyses_data):
+        existing = db.query(ChunkAnalysis).filter_by(chunk_id=chunk.id).first()
+        if existing:
+            for key, val in data.items():
+                setattr(existing, key, val)
+        else:
+            db.add(ChunkAnalysis(chunk_id=chunk.id, **data))
+        results.append({"chunk_id": chunk.id, "chunk_index": chunk.chunk_index, **data})
+
+    db.flush()
+    return results
 
 
 def extract_themes(analyses: list[dict]) -> dict:
