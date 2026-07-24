@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Heart, Star, ChevronDown, Search } from "lucide-react";
-import AppNav from "@/components/AppNav";
+import AppShell from "@/components/AppShell";
 import Btn from "@/components/ui/Btn";
 import { getBookDNA, BookDNA } from "@/lib/api";
 
@@ -139,9 +139,7 @@ export default function BookDetailPage() {
       : book.themes;
 
   return (
-    <div className="mx-8 my-4 h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
-      <AppNav />
-
+    <AppShell fixedHeight>
       <div className="flex flex-1 overflow-hidden">
 
         {/* ── LEFT PANEL (amber) ─────────────────────────────── */}
@@ -263,6 +261,6 @@ export default function BookDetailPage() {
 
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

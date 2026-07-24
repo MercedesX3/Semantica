@@ -8,9 +8,9 @@ import Logo from "./Logo";
 
 const NAV_LINKS = [
   { label: "Browse", href: "/home" },
-  { label: "Book Scroll", href: "/home#scroll" },
+  { label: "Book Scroll", href: "/scroll" },
   { label: "Map", href: "/map" },
-  { label: "Library", href: "/home#library" },
+  { label: "Library", href: "/library" },
   { label: "Soundtracks", href: "/soundtracks" },
 ];
 
@@ -53,7 +53,7 @@ export default function AppNav() {
         >
           {NAV_LINKS.map(({ label, href }) => {
             const base = href.split("#")[0];
-            const active = pathname === base;
+            const active = pathname === base || (base !== "/home" && pathname.startsWith(base + "/"));
             return (
               <Link
                 key={label}

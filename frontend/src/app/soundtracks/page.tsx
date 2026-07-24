@@ -1,7 +1,7 @@
 "use client";
 
 import { Play, BookOpen } from "lucide-react";
-import AppNav from "@/components/AppNav";
+import AppShell from "@/components/AppShell";
 
 interface Playlist {
   id: number;
@@ -73,9 +73,7 @@ function PlaylistCard({ playlist }: { playlist: Playlist }) {
 
 export default function SoundtracksPage() {
   return (
-    <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] flex flex-col">
-      <AppNav />
-
+    <AppShell>
       <main className="flex-1 px-12 py-12 pb-28">
         <h1 className="text-6xl font-bold font-sans mb-8">Book Soundtracks</h1>
 
@@ -110,6 +108,6 @@ export default function SoundtracksPage() {
           </button>
         </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

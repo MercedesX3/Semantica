@@ -2,18 +2,38 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import AppNav from "@/components/AppNav";
+import AppShell from "@/components/AppShell";
 import BookCard, { BookData } from "@/components/ui/BookCard";
 import GenreTag from "@/components/ui/GenreTag";
 import { Star } from "lucide-react";
-import { getForYouRecommendations } from "@/lib/api";
+import { getForYouRecommendations, getTrendingBooks } from "@/lib/api";
 
 const DNA_GENRES = [
-  { label: "Romance", color: "bg-pink-300" },
-  { label: "Literary", color: "bg-amber-400" },
-  { label: "Horror", color: "bg-sky-500" },
-  { label: "Classic", color: "bg-emerald-300" },
-  { label: "Sci-Fi", color: "bg-blue-700" },
+  {
+    label: "Romance",
+    color: "bg-pink-300",
+    blurb: "Heart-forward stories about connection, desire, and emotional payoff.",
+  },
+  {
+    label: "Literary",
+    color: "bg-amber-400",
+    blurb: "Language-driven fiction with rich character interiority.",
+  },
+  {
+    label: "Horror",
+    color: "bg-sky-500",
+    blurb: "Unease, dread, and the thrill of things that go bump.",
+  },
+  {
+    label: "Classic",
+    color: "bg-emerald-300",
+    blurb: "Enduring works that shaped how we still read and write.",
+  },
+  {
+    label: "Sci-Fi",
+    color: "bg-blue-700",
+    blurb: "Speculative worlds, future tech, and big what-if questions.",
+  },
 ];
 
 const PICKS: BookData[] = [
@@ -24,12 +44,12 @@ const PICKS: BookData[] = [
   { id: 5, title: "The Night Circus", author: "Erin Morgenstern", genre: "Fantasy", rating: 4.71, reviews: 3241, coverUrl: "https://covers.openlibrary.org/b/id/8409688-M.jpg" },
 ];
 
-const TRENDING: BookData[] = [
-  { id: 6, title: "Circe", author: "Madeline Miller", genre: "Fantasy", rating: 4.58, reviews: 4102, coverUrl: "https://covers.openlibrary.org/b/id/9255912-M.jpg" },
-  { id: 7, title: "Where the Crawdads Sing", author: "Delia Owens", genre: "Literary", rating: 4.45, reviews: 5678, coverUrl: "https://covers.openlibrary.org/b/id/8459529-M.jpg" },
-  { id: 8, title: "The Seven Husbands of Evelyn Hugo", author: "Taylor Jenkins Reid", genre: "Romance", rating: 4.82, reviews: 6543, coverUrl: "https://covers.openlibrary.org/b/id/9256490-M.jpg" },
-  { id: 9, title: "Brave New World", author: "Aldous Huxley", genre: "Dystopian", rating: 4.12, reviews: 9876, coverUrl: "https://covers.openlibrary.org/b/id/8739161-M.jpg" },
-  { id: 10, title: "Crime and Punishment", author: "Fyodor Dostoevsky", genre: "Classic", rating: 4.35, reviews: 12453, coverUrl: "https://covers.openlibrary.org/b/id/8739150-M.jpg" },
+const TRENDING_FALLBACK: BookData[] = [
+  { id: 6, title: "Circe", author: "Madeline Miller", genre: "Fantasy", coverUrl: "https://covers.openlibrary.org/b/id/9255912-M.jpg" },
+  { id: 7, title: "Where the Crawdads Sing", author: "Delia Owens", genre: "Literary", coverUrl: "https://covers.openlibrary.org/b/id/8459529-M.jpg" },
+  { id: 8, title: "The Seven Husbands of Evelyn Hugo", author: "Taylor Jenkins Reid", genre: "Romance", coverUrl: "https://covers.openlibrary.org/b/id/9256490-M.jpg" },
+  { id: 9, title: "Brave New World", author: "Aldous Huxley", genre: "Dystopian", coverUrl: "https://covers.openlibrary.org/b/id/8739161-M.jpg" },
+  { id: 10, title: "Crime and Punishment", author: "Fyodor Dostoevsky", genre: "Classic", coverUrl: "https://covers.openlibrary.org/b/id/8739150-M.jpg" },
 ];
 
 const CURRENTLY_READING: BookData[] = [
@@ -68,11 +88,77 @@ function CurrentlyReadingCard({ book }: { book: BookData }) {
   );
 }
 
+function ReadingDnaOrb({
+  label,
+  color,
+  blurb,
+  active,
+  onHover,
+}: {
+  label: string;
+  color: string;
+  blurb: string;
+  active: boolean;
+  onHover: (label: string | null) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="relative flex flex-col items-center gap-2 group outline-none"
+      onMouseEnter={() => onHover(label)}
+      onMouseLeave={() => onHover(null)}
+      onFocus={() => onHover(label)}
+      onBlur={() => onHover(null)}
+      aria-label={`${label}: ${blurb}`}
+    >
+      <div
+        className={`w-20 h-20 ${color} rounded-full outline-2 -outline-offset-2 outline-black flex items-center justify-center transition-all duration-200 ease-out ${
+          active
+            ? "scale-125 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ring-4 ring-pink-400/50"
+            : "shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] group-hover:scale-125 group-hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]"
+        }`}
+      >
+        <div
+          className={`bg-white rounded-full transition-all duration-200 ${
+            active ? "w-5 h-5" : "w-4 h-4 group-hover:w-5 group-hover:h-5"
+          }`}
+        />
+      </div>
+      <span
+        className={`text-sm font-semibold font-sans transition-colors ${
+          active ? "text-pink-500" : "text-black"
+        }`}
+      >
+        {label}
+      </span>
+
+      {/* Hover tooltip */}
+      <div
+        className={`pointer-events-none absolute top-full mt-3 z-20 w-48 px-3 py-2 bg-white outline outline-2 outline-offset-[-2px] outline-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-left transition-all duration-200 ${
+          active
+            ? "opacity-100 translate-y-0"
+            : "opacity-0 -translate-y-1"
+        }`}
+      >
+        <p className="text-xs font-semibold font-mono uppercase tracking-wide text-pink-500 mb-1">
+          {label}
+        </p>
+        <p className="text-xs font-semibold font-sans leading-snug text-zinc-700">
+          {blurb}
+        </p>
+      </div>
+    </button>
+  );
+}
+
 export default function HomePage() {
   const router = useRouter();
+  const [hoveredDna, setHoveredDna] = useState<string | null>(null);
 
   // Start with the mock picks; swap in real, cover-rich recs once they load.
   const [picks, setPicks] = useState<BookData[]>(PICKS);
+  const [trending, setTrending] = useState<BookData[]>(TRENDING_FALLBACK);
+
   useEffect(() => {
     getForYouRecommendations(8)
       .then((recs) => {
@@ -88,33 +174,47 @@ export default function HomePage() {
         );
       })
       .catch(() => {/* keep mock picks on failure */});
+
+    getTrendingBooks(10)
+      .then((books) => {
+        if (books.length === 0) return;
+        setTrending(
+          books.map((b, i) => ({
+            id: b.key ? (b.key.split("/").pop() ?? `trending-${i}`) : `trending-${i}`,
+            title: b.title,
+            author: b.author,
+            coverUrl: b.cover_url,
+          })),
+        );
+      })
+      .catch(() => {/* keep fallback trending on failure */});
   }, []);
 
   return (
-    <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] flex flex-col">
-      <AppNav />
-
-      <div className="flex flex-1">
+    <AppShell>
+      <div className="flex flex-1 relative">
         <main className="flex-1 px-12 py-12 overflow-y-auto">
           <h1 className="text-6xl font-bold font-sans mb-10">Discover your next read</h1>
 
           <section className="mb-10">
             <h2 className="text-3xl font-bold font-sans mb-6">Your Reading DNA</h2>
-            <div className="flex items-center gap-8 flex-wrap">
-              {DNA_GENRES.map(({ label, color }) => (
-                <div key={label} className="flex flex-col items-center gap-2">
-                  <div className={`w-20 h-20 ${color} rounded-full outline-2 -outline-offset-2 outline-black flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]`}>
-                    <div className="w-4 h-4 bg-white rounded-full" />
-                  </div>
-                  <span className="text-sm font-semibold font-sans">{label}</span>
-                </div>
+            <div className="flex items-start gap-8 flex-wrap pb-16">
+              {DNA_GENRES.map(({ label, color, blurb }) => (
+                <ReadingDnaOrb
+                  key={label}
+                  label={label}
+                  color={color}
+                  blurb={blurb}
+                  active={hoveredDna === label}
+                  onHover={setHoveredDna}
+                />
               ))}
             </div>
           </section>
 
           <section className="mb-10">
             <h2 className="text-3xl font-bold font-sans mb-6">Picks for You</h2>
-            <div className="flex gap-6 overflow-x-auto pb-2">
+            <div className="flex gap-6 overflow-x-auto pb-2 items-start">
               {picks.map((book) => (
                 <div key={book.id} className="shrink-0">
                   <BookCard
@@ -131,12 +231,12 @@ export default function HomePage() {
 
           <section>
             <h2 className="text-3xl font-bold font-sans mb-6">Trending Books</h2>
-            <div className="flex gap-6 overflow-x-auto pb-2">
-              {TRENDING.map((book) => (
+            <div className="flex gap-6 overflow-x-auto pb-2 items-start">
+              {trending.map((book) => (
                 <div key={book.id} className="shrink-0">
                   <BookCard
                     book={book}
-                    size="sm"
+                    size="lg"
                     showSave={false}
                     onClick={() => router.push(`/books/${book.id}`)}
                   />
@@ -146,7 +246,13 @@ export default function HomePage() {
           </section>
         </main>
 
-        <aside className="w-80 shrink-0 border-l-2 border-black px-8 py-12 overflow-y-auto">
+        {/* Soft fade from main content into the sidebar */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-0 bottom-0 right-80 w-24 z-10 bg-gradient-to-r from-transparent to-white"
+        />
+
+        <aside className="w-80 shrink-0 px-8 py-12 overflow-y-auto bg-white relative z-0">
           <h2 className="text-2xl font-bold font-sans mb-6">Currently Reading</h2>
           <div className="flex flex-col gap-6">
             {CURRENTLY_READING.map((book) => (
@@ -155,6 +261,6 @@ export default function HomePage() {
           </div>
         </aside>
       </div>
-    </div>
+    </AppShell>
   );
 }

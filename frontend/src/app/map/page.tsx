@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Plus, Minus } from "lucide-react";
-import AppNav from "@/components/AppNav";
+import AppShell from "@/components/AppShell";
 import SearchInput from "@/components/ui/SearchInput";
 import GenreTag from "@/components/ui/GenreTag";
 
@@ -149,9 +149,7 @@ export default function MapPage() {
   }, []);
 
   return (
-      <div className="mx-8 my-4 min-h-[calc(100vh-2rem)] flex flex-col">
-      <AppNav />
-
+    <AppShell fixedHeight>
       <div className="flex-1 relative overflow-hidden">
 
         {/* ── Pinned overlays (not affected by pan/zoom) ────────────────── */}
@@ -316,6 +314,6 @@ export default function MapPage() {
         </div>
 
       </div>
-    </div>
+    </AppShell>
   );
 }

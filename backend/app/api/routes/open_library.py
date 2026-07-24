@@ -6,6 +6,7 @@ from app.schemas.external_book import ExternalBookSearchResponse, ExternalBookRe
 router = APIRouter()
 
 OPEN_LIBRARY_SEARCH_URL = "https://openlibrary.org/search.json"
+OPEN_LIBRARY_TRENDING_URL = "https://openlibrary.org/trending/weekly.json"
 OPEN_LIBRARY_COVER_URL = "https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
 
 # A plain requests.get() opens a fresh connection (DNS + TLS handshake) every
@@ -49,3 +50,48 @@ def search_open_library(q: str = Query(..., min_length=1), limit: int = Query(de
     ]
 
     return ExternalBookSearchResponse(query=q, results=results)
+
+
+@router.get("/trending", response_model=ExternalBookSearchResponse)
+def trending_open_library(limit: int = Query(default=10, ge=1, le=20)):
+    """Proxies Open Library's daily trending works (with covers)."""
+    response = None
+    last_error: Exception | None = None
+    for _ in range(2):
+        try:
+            response = _session.get(
+                OPEN_LIBRARY_TRENDING_URL,
+                params={"limit": limit},
+                timeout=10,
+            )
+            response.raise_for_status()
+            last_error = None
+            break
+        except requests.RequestException as e:
+            last_error = e
+            response = None
+
+    if last_error is not None:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Open Library trending lookup failed: {type(last_error).__name__}",
+        )
+
+    works = response.json().get("works", [])[:limit]
+
+    results = [
+        ExternalBookResult(
+            key=work.get("key", ""),
+            title=work.get("title", "Untitled"),
+            author=(work.get("author_name") or ["Unknown author"])[0],
+            cover_url=(
+                OPEN_LIBRARY_COVER_URL.format(cover_id=work["cover_i"])
+                if work.get("cover_i")
+                else None
+            ),
+        )
+        for work in works
+        if work.get("key")
+    ]
+
+    return ExternalBookSearchResponse(query="trending/daily", results=results)

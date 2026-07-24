@@ -130,6 +130,14 @@ export async function searchOpenLibrary(query: string, limit = 8): Promise<Exter
   return data.results;
 }
 
+/** Top daily trending books from Open Library (with covers). */
+export async function getTrendingBooks(limit = 10): Promise<ExternalBookResult[]> {
+  const res = await fetch(`${API_BASE}/open-library/trending?limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed to load trending books: ${res.status}`);
+  const data = await res.json();
+  return data.results;
+}
+
 export interface FavoriteBook {
   id: number;
   open_library_key: string;
