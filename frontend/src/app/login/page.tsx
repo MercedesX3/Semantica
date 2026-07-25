@@ -2,18 +2,43 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { loginUser } from "@/lib/api";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import Btn from "@/components/ui/Btn";
 
 export default function Login() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(
+    e: React.FormEvent<HTMLFormElement>
+  ) {
     e.preventDefault();
-    router.push("/home");
+
+    try {
+      setLoading(true);
+      setError("");
+
+      await loginUser({
+        email,
+        password,
+      });
+
+      router.replace("/home");
+      router.refresh();
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -49,8 +74,23 @@ export default function Login() {
               />
             </div>
 
-            <Btn type="submit" variant="primary" size="lg" className="w-full mt-2">
-              Sign In
+            {error && (
+              <p
+                role="alert"
+                className="text-sm font-semibold text-red-600"
+              >
+                {error}
+              </p>
+            )}
+
+            <Btn
+              type="submit"
+              variant="primary"
+              size="lg"
+              className="w-full mt-2"
+              disabled={loading}
+            >
+              {loading ? "Signing In..." : "Sign In"}
             </Btn>
 
             <div className="flex items-center gap-3">

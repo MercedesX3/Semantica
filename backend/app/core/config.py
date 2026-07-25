@@ -3,6 +3,36 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+AWS_PROFILE = os.getenv("AWS_PROFILE", "default")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+USER_PROFILES_TABLE = os.getenv("DYNAMODB_USER_PROFILES_TABLE", "user_profiles")
+
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+
+if not JWT_SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY is missing. Add it to your backend .env file."
+    )
+
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+
+ACCESS_TOKEN_EXPIRE_MINUTES = int(
+    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+)
+
+AUTH_COOKIE_NAME = os.getenv(
+    "AUTH_COOKIE_NAME",
+    "semantica_access_token",
+)
+
+COOKIE_SECURE = (
+    os.getenv("COOKIE_SECURE", "false").lower() == "true"
+)
+
+FRONTEND_ORIGIN = os.getenv(
+    "FRONTEND_ORIGIN",
+    "http://localhost:3000",
+)
 
 class Settings:
     # App

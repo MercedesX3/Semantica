@@ -12,6 +12,13 @@ sqlalchemy==2.0.32
 psycopg2-binary==2.9.9
 pgvector==0.3.6
 
+# Authentication
+passlib[bcrypt]==1.7.5
+python-jose==3.3.1
+email-validator
+boto3
+PyJWT
+
 # NLP + ML
 torch
 transformers==4.44.2

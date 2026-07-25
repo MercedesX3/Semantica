@@ -8,6 +8,8 @@ from sqlalchemy import text
 from app.core.database import engine, Base
 from app.models import Book, BookChunk  # registers models with Base
 from app.api.api import api_router
+from app.api.users import router as user_router
+from app.core.config import FRONTEND_ORIGIN
 
 nltk.download("punkt_tab", quiet=True)
 
@@ -20,7 +22,10 @@ app = FastAPI(title="Semantica API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        FRONTEND_ORIGIN,
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -40,6 +45,7 @@ with engine.connect() as conn:
     conn.commit()
 
 app.include_router(api_router)
+app.include_router(user_router)
 
 
 @app.get("/")

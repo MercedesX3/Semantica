@@ -289,3 +289,153 @@ export async function getBookInfo(bookRef: string | number): Promise<BookDetails
     chunkCount: data.chunk_count,
   };
 }
+
+// Authentication-related API functions
+
+// Authentication-related API functions
+
+export interface User {
+  user_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  last_active_at: string;
+  updated_at: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+async function getErrorMessage(
+  response: Response,
+  fallback: string
+): Promise<string> {
+  try {
+    const data: unknown = await response.json();
+
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      "detail" in data &&
+      typeof data.detail === "string"
+    ) {
+      return data.detail;
+    }
+  } catch {
+    // The backend did not return JSON.
+  }
+
+  return fallback;
+}
+
+/**
+ * Creates a user account.
+ * The backend also creates the HttpOnly authentication cookie.
+ */
+export async function registerUser(
+  request: RegisterRequest
+): Promise<User> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...request,
+      email: request.email.trim().toLowerCase(),
+    }),
+  });
+
+  if (!res.ok) {
+    const message = await getErrorMessage(
+      res,
+      `Registration failed: ${res.status}`
+    );
+
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+/**
+ * Verifies the email and password.
+ * The backend creates the HttpOnly authentication cookie.
+ */
+export async function loginUser(
+  request: LoginRequest
+): Promise<User> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: request.email.trim().toLowerCase(),
+      password: request.password,
+    }),
+  });
+
+  if (!res.ok) {
+    const message = await getErrorMessage(
+      res,
+      `Login failed: ${res.status}`
+    );
+
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+/**
+ * Uses the authentication cookie to retrieve the logged-in user.
+ */
+export async function getCurrentUser(): Promise<User> {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const message = await getErrorMessage(
+      res,
+      "You are not signed in."
+    );
+
+    throw new Error(message);
+  }
+
+  return res.json();
+}
+
+/**
+ * Deletes the authentication cookie.
+ */
+export async function logoutUser(): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  if (!res.ok) {
+    const message = await getErrorMessage(
+      res,
+      `Logout failed: ${res.status}`
+    );
+
+    throw new Error(message);
+  }
+}
