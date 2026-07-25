@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -6,10 +6,18 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.book import Book, BookChunk
 from app.models.analysis_job import BookAnalysisJob
-from app.schemas.book import IngestRequest, IngestResponse, BookSummary, SearchResponse, SearchResultItem
+from app.schemas.book import (
+    IngestRequest,
+    IngestResponse,
+    BookSummary,
+    SearchResponse,
+    SearchResultItem,
+    BookDetailsResponse,
+)
 from app.services.text_processing_service import chunk_text_by_chapter
 from app.services.embedding_service import embed_chunks
 from app.services.analysis_job_service import run_dna_pipeline_job
+from app.services.book_detail_service import get_book_details
 from app.ml.embedding_pipeline import get_embedding
 
 router = APIRouter()
@@ -99,3 +107,12 @@ def search_books(
     ]
 
     return SearchResponse(query=q, results=results)
+
+
+@router.get("/{book_ref}", response_model=BookDetailsResponse)
+def get_book(book_ref: str, db: Session = Depends(get_db)):
+    """Detail for an ingested book (numeric id) or an Open Library work key."""
+    details = get_book_details(db, book_ref)
+    if not details:
+        raise HTTPException(status_code=404, detail="Book not found")
+    return BookDetailsResponse(**details)

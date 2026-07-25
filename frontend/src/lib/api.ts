@@ -172,3 +172,120 @@ export async function removeFavorite(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/favorites/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`Failed to remove favorite: ${res.status}`);
 }
+
+export interface PlaylistTrack {
+  id: string | null;
+  name: string;
+  artist: string;
+  album: string | null;
+  duration_ms: number;
+  preview_url: string | null;
+  external_url: string | null;
+  image_url: string | null;
+}
+
+export interface PlaylistSummary {
+  book_id: number;
+  book_title: string;
+  author: string;
+  playlist_title: string;
+  track_count: number;
+  duration: string;
+  accent_color: string;
+  chapter_count: number;
+  spotify_enabled: boolean;
+  cover_url: string | null;
+}
+
+export interface BookPlaylist extends PlaylistSummary {
+  chapters: {
+    chapter_index: number;
+    title: string;
+    mood: {
+      query: string;
+      genre: string;
+      mood_label: string;
+      emotion: string;
+      sentiment: string;
+      pacing: number;
+      theme: string | null;
+      energy: string;
+    };
+    tracks: PlaylistTrack[];
+  }[];
+  tracks: PlaylistTrack[];
+}
+
+export async function listPlaylists(): Promise<PlaylistSummary[]> {
+  const res = await fetch(`${API_BASE}/playlists/`);
+  if (!res.ok) throw new Error(`Failed to load playlists: ${res.status}`);
+  return res.json();
+}
+
+export async function getBookPlaylist(bookId: number): Promise<BookPlaylist> {
+  const res = await fetch(`${API_BASE}/playlists/books/${bookId}`);
+  if (!res.ok) throw new Error(`Failed to load playlist: ${res.status}`);
+  return res.json();
+}
+
+export interface BookDetails {
+  id: string;
+  title: string;
+  author: string;
+  genre: string | null;
+  rating: number | null;
+  ratings: number | null;
+  coverUrl: string | null;
+  description: string | null;
+  source?: string;
+  openLibraryKey?: string | null;
+  chunkCount?: number | null;
+}
+
+interface BookDetailsResponse {
+  id: string;
+  title: string;
+  author: string;
+  genre: string | null;
+  rating: number | null;
+  ratings: number | null;
+  cover_url: string | null;
+  description: string | null;
+  source?: string;
+  open_library_key?: string | null;
+  chunk_count?: number | null;
+}
+
+/** Detail for an ingested book id or an Open Library work key (e.g. OL17930368W). */
+export async function getBookInfo(bookRef: string | number): Promise<BookDetails> {
+  const decodedRef = typeof bookRef === "string"
+    ? decodeURIComponent(bookRef).trim()
+    : String(bookRef);
+
+  const normalizedRef = decodedRef
+    .replace(/^\/+/, "")
+    .replace(/^works\//i, "")
+    .trim();
+
+  const res = await fetch(`${API_BASE}/books/${encodeURIComponent(normalizedRef)}`);
+
+  if (!res.ok) {
+    throw new Error(`Failed to load book: ${res.status}`);
+  }
+
+  const data: BookDetailsResponse = await res.json();
+
+  return {
+    id: data.id,
+    title: data.title,
+    author: data.author,
+    genre: data.genre,
+    rating: data.rating,
+    ratings: data.ratings,
+    coverUrl: data.cover_url,
+    description: data.description,
+    source: data.source,
+    openLibraryKey: data.open_library_key,
+    chunkCount: data.chunk_count,
+  };
+}

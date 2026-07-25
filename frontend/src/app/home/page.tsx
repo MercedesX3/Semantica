@@ -173,7 +173,7 @@ export default function HomePage() {
           })),
         );
       })
-      .catch(() => {/* keep mock picks on failure */});
+      //.catch(() => {/* keep mock picks on failure */});
 
     getTrendingBooks(10)
       .then((books) => {

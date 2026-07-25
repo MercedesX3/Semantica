@@ -37,3 +37,17 @@ class SearchResultItem(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchResultItem]
+
+
+class BookDetailsResponse(BaseModel):
+    id: str
+    title: str
+    author: str
+    genre: str | None = None
+    rating: float | None = None
+    ratings: int | None = None
+    cover_url: str | None = None
+    description: str | None = None
+    source: str = "database"
+    open_library_key: str | None = None
+    chunk_count: int | None = None

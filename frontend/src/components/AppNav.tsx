@@ -3,8 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { Search, X, BookOpen } from "lucide-react";
 import Logo from "./Logo";
+import { searchOpenLibrary, ExternalBookResult } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
 const NAV_LINKS = [
   { label: "Browse", href: "/home" },
@@ -16,12 +18,49 @@ const NAV_LINKS = [
 
 export default function AppNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ExternalBookResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (searchOpen) inputRef.current?.focus();
   }, [searchOpen]);
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSearchLoading(true);
+      searchOpenLibrary(trimmed, 8)
+        .then((results) => {
+          if (!cancelled) {
+            setSearchResults(results);
+            setSearchOpen(true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setSearchResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setSearchLoading(false);
+        });
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   // Close on Escape
   useEffect(() => {
@@ -31,7 +70,7 @@ export default function AppNav() {
   }, []);
 
   return (
-    <header className="w-full bg-stone-50 outline outline-2 outline-offset-[-2px] outline-black p-2.5 flex items-center justify-between shrink-0">
+    <header className="w-full bg-stone-50 outline-2 -outline-offset-2 outline-black p-2.5 flex items-center justify-between shrink-0">
 
       {/* Logo */}
       <Link href="/home" aria-label="Home">
@@ -48,7 +87,6 @@ export default function AppNav() {
             maxWidth: searchOpen ? 0 : 600,
             opacity: searchOpen ? 0 : 1,
             pointerEvents: searchOpen ? "none" : "auto",
-            transition: "max-width 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease",
           }}
         >
           {NAV_LINKS.map(({ label, href }) => {
@@ -68,35 +106,90 @@ export default function AppNav() {
 
         {/* Expanding search input */}
         <div
-          className="overflow-hidden"
+          className="overflow-visible"
           style={{
-            width: searchOpen ? 240 : 0,
+            width: searchOpen ? 280 : 0,
             opacity: searchOpen ? 1 : 0,
-            transition: "width 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease",
+            pointerEvents: searchOpen ? "auto" : "none",
           }}
         >
-          <div className="flex items-center gap-2 bg-white outline outline-2 outline-offset-[-2px] outline-black px-3 h-9 w-60">
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Search books..."
-              className="bg-transparent outline-none text-base font-semibold font-sans placeholder:text-black/40 flex-1 min-w-0"
-            />
-            <button
-              onClick={() => setSearchOpen(false)}
-              aria-label="Close search"
-              className="shrink-0 text-black/40 hover:text-black transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div className="relative w-70">
+            <div className="flex items-center gap-2 bg-white outline-2 -outline-offset-2 outline-black px-3 h-9 w-70">
+              <input
+                ref={inputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => searchQuery.trim().length >= 2 && setSearchOpen(true)}
+                placeholder="Search books..."
+                className="bg-transparent outline-none text-base font-semibold font-sans placeholder:text-black/40 flex-1 min-w-0"
+              />
+              <button
+                onClick={() => {
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                  setSearchResults([]);
+                }}
+                aria-label="Close search"
+                className="shrink-0 text-black/40 hover:text-black transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {searchOpen && (searchQuery.trim().length >= 2 || searchResults.length > 0) && (
+              <div className="absolute top-full left-0 right-0 mt-2 max-h-72 overflow-y-auto rounded-lg border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] z-30">
+                {searchLoading ? (
+                  <p className="px-3 py-3 text-sm font-semibold font-sans text-zinc-500">Searching…</p>
+                ) : searchResults.length > 0 ? (
+                  <div className="divide-y divide-zinc-100">
+                    {searchResults.map((book) => (
+                      <button
+                        key={book.key}
+                        type="button"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setSearchQuery("");
+                          setSearchResults([]);
+                          const bookRef = book.key.split("/").filter(Boolean).pop() ?? book.key;
+                          router.push(`/books/${bookRef}`);
+                        }}
+                        className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-zinc-50"
+                      >
+                        {book.cover_url ? (
+                          <img src={book.cover_url} alt={book.title} className="h-14 w-10 object-cover shrink-0 border border-black rounded-sm" />
+                        ) : (
+                          <div className="h-14 w-10 shrink-0 border border-black bg-stone-100 flex items-center justify-center">
+                            <BookOpen className="w-4 h-4 text-zinc-400" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex flex-col gap-0.5">
+                          <p className="text-sm font-bold font-sans truncate">{book.title}</p>
+                          <p className="text-xs font-semibold font-sans text-zinc-600 truncate">{book.author}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="px-3 py-3 text-sm font-semibold font-sans text-zinc-500">No books found</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Search icon toggle */}
         <button
+          type="button"
           aria-label={searchOpen ? "Close search" : "Open search"}
-          onClick={() => setSearchOpen((v) => !v)}
-          className={`p-1 transition-colors duration-200 ${searchOpen ? "text-pink-500" : "text-black"}`}
+          onClick={() => {
+            setSearchOpen((v) => !v);
+            if (!searchOpen) {
+              setSearchQuery("");
+              setSearchResults([]);
+            }
+          }}
+          className={`p-1 transition-colors duration-200 cursor-pointer ${searchOpen ? "text-pink-500" : "text-black"}`}
         >
           <Search className="w-5 h-5" />
         </button>

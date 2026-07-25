@@ -22,5 +22,9 @@ class Settings:
     # Search
     SEARCH_SIMILARITY_THRESHOLD: float = float(os.getenv("SEARCH_SIMILARITY_THRESHOLD", 0.35))
 
+    # Spotify (Client Credentials — Search API only; no audio-features)
+    SPOTIFY_CLIENT_ID: str = os.getenv("SPOTIFY_CLIENT_ID", "")
+    SPOTIFY_CLIENT_SECRET: str = os.getenv("SPOTIFY_CLIENT_SECRET", "")
+
 
 settings = Settings()
