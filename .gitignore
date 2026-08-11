@@ -7,3 +7,8 @@ __pycache__/
 /books/
 styling.md
 Screens-from-Figma/
+backend/lambda/functions/function.zip
+.gitignore
+backend/lambda/response.json
+backend/lambda/function.zip
+backend/notes.txt

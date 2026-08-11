@@ -1,0 +1,13 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WriteTrendingBooks",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:BatchWriteItem"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-2:992234857296:table/semantica-trending-books"
+    }
+  ]
+}
