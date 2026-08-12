@@ -1,4 +1,5 @@
 import boto3
+import concurrent.futures
 import json
 import os
 import urllib.request
@@ -6,9 +7,10 @@ import urllib.parse
 
 from datetime import datetime, timezone
 from urllib.error import HTTPError, URLError
+from decimal import Decimal
 
 
-TIMEOUT_SECONDS = 10
+TIMEOUT_SECONDS = 5
 
 HEADERS = {
     "Accept": "application/json",
@@ -56,38 +58,116 @@ def get_json(url):
 
 def fetch_open_library_fiction_top_10():
     """
-    Fetches 10 popular fiction books from Open Library
-    to better match the NYT Hardcover Fiction category.
+    Fetches fiction books currently trending
+    on Open Library.
     """
 
-    params = urllib.parse.urlencode({
-        "q": "subject:fiction AND language:eng",
-        "limit": 10,
-        "page": 1,
-        "sort": "readinglog",
-        "fields": (
-            "key,"
-            "title,"
-            "author_name,"
-            "first_publish_year,"
-            "isbn,"
-            "cover_i"
+    current_year = datetime.now(timezone.utc).year
+    minimum_year = current_year - 1
+
+    recent_books = []
+    page = 1
+    max_pages = 3
+
+    while (
+        len(recent_books) < 10
+        and page <= max_pages
+    ):
+
+        params = urllib.parse.urlencode({
+            "q": (
+                "subject:fiction "
+                "AND language:eng "
+                f"AND first_publish_year:[{minimum_year} TO {current_year}]"
+            ),
+
+            "limit": 100,
+            "page": page,
+
+            "sort": "trending",
+
+            "fields": (
+                "key,"
+                "title,"
+                "author_name,"
+                "first_publish_year,"
+                "isbn,"
+                "cover_i,"
+                "trending_z_score,"
+                "trending_score_hourly_sum"
+            )
+        })
+
+        url = (
+            "https://openlibrary.org/"
+            f"search.json?{params}"
         )
-    })
 
-    url = (
-        "https://openlibrary.org/"
-        f"search.json?{params}"
-    )
+        data = get_json(url)
 
-    data = get_json(url)
+        works = data.get(
+            "docs",
+            []
+        )
 
-    works = data.get("docs", [])
+        if not works:
+            break
+
+        for book in works:
+
+            year = book.get(
+                "first_publish_year"
+            )
+
+            if (
+                isinstance(year, int)
+                and minimum_year <= year <= current_year
+            ):
+                recent_books.append(book)
+
+            if len(recent_books) == 10:
+                break
+
+        page += 1
+
+    if not recent_books:
+        return []
+
+    selected_books = recent_books[:10]
+
+    def fetch_description(book):
+        work_key = book.get("key")
+        if not work_key:
+            return None
+
+        try:
+            return fetch_open_library_description(work_key)
+        except Exception as error:
+            print(
+                f"Description error for {book.get('title')}: {error}"
+            )
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=4
+    ) as executor:
+        descriptions = list(
+            executor.map(
+                fetch_description,
+                selected_books
+            )
+        )
+
+    for book, description in zip(
+        selected_books,
+        descriptions
+    ):
+        book["description"] = description
 
     books = []
 
     for rank, book in enumerate(
-        works[:10],
+        recent_books[:10],
         start=1
     ):
 
@@ -140,17 +220,16 @@ def fetch_open_library_fiction_top_10():
                 f"b/id/{cover_id}-L.jpg"
             )
 
-        work_key = book.get(
-            "key"
-        )
+        work_key = book.get("key")
 
         source_id = None
         source_url = None
+        description = book.get("description")
 
         if work_key:
+
             source_id = (
-                work_key
-                .split("/")[-1]
+                work_key.split("/")[-1]
             )
 
             source_url = (
@@ -161,6 +240,7 @@ def fetch_open_library_fiction_top_10():
         books.append({
             "source": "open_library",
             "category": "fiction",
+
             "source_rank": rank,
 
             "source_id": source_id,
@@ -171,16 +251,55 @@ def fetch_open_library_fiction_top_10():
 
             "author": author,
 
+            "description": description,
+
+            "first_publish_year": book.get(
+                "first_publish_year"
+            ),
+
             "isbn_13": isbn_13,
             "isbn_10": isbn_10,
 
             "cover_url": cover_url,
 
-            "source_url": source_url
+            "source_url": source_url,
+
+            "trending_score": book.get(
+                "trending_z_score"
+            ),
+
+            "activity_24h": book.get(
+                "trending_score_hourly_sum"
+            )
         })
 
     return books
 
+def fetch_open_library_description(work_key):
+    """
+    Fetches the description for a specific Open Library work.
+    Returns None if no description exists.
+    """
+
+    if not work_key:
+        return None
+
+    url = f"https://openlibrary.org{work_key}.json"
+
+    data = get_json(url)
+
+    description = data.get("description")
+
+    # Open Library sometimes returns:
+    # {"type": "/type/text", "value": "description..."}
+    if isinstance(description, dict):
+        return description.get("value")
+
+    # Sometimes it is just a string
+    if isinstance(description, str):
+        return description
+
+    return None
 
 # ---------------------------------------------------------
 # NEW YORK TIMES
@@ -272,6 +391,24 @@ def fetch_nyt_fiction_top_10():
 
     return books
 
+def convert_for_dynamodb(value):
+
+    if isinstance(value, float):
+        return Decimal(str(value))
+
+    if isinstance(value, dict):
+        return {
+            key: convert_for_dynamodb(val)
+            for key, val in value.items()
+        }
+
+    if isinstance(value, list):
+        return [
+            convert_for_dynamodb(item)
+            for item in value
+        ]
+
+    return value
 
 def store_books(books):
     """
@@ -292,7 +429,7 @@ def store_books(books):
         for book in books:
 
             item = {
-                key: value
+                key: convert_for_dynamodb(value)
                 for key, value in book.items()
                 if value is not None
             }

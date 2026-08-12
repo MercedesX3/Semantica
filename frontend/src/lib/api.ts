@@ -1,5 +1,7 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+const TRENDING_API_BASE = process.env.NEXT_PUBLIC_TRENDING_API_URL ?? "";
+
 export interface SearchResult {
   book_id: number;
   title: string;
@@ -108,10 +110,46 @@ export interface ForYouBook {
 
 /** Cover-rich recommendations seeded from the user's favorites. */
 export async function getForYouRecommendations(limit = 10): Promise<ForYouBook[]> {
-  const res = await fetch(`${API_BASE}/recommendations/for-you?limit=${limit}`);
+  const base = TRENDING_API_BASE || API_BASE;
+  const res = await fetch(`${base}/recommendations/for-you?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to load recommendations: ${res.status}`);
   const data = await res.json();
   return data.results;
+}
+
+export interface TrendingBook {
+  source: "open_library" | "nytimes";
+  category: string;
+
+  source_rank: number;
+  source_id?: string;
+
+  title: string;
+  author: string;
+
+  description?: string;
+
+  isbn_13?: string;
+  isbn_10?: string;
+
+  cover_url?: string;
+  source_url?: string;
+
+  first_publish_year?: number;
+
+  publisher?: string;
+  weeks_on_list?: number;
+
+  trending_score?: number;
+  activity_24h?: number;
+
+  fetched_at?: string;
+}
+
+export interface TrendingBooksResponse {
+  total_books: number;
+  open_library: TrendingBook[];
+  nytimes: TrendingBook[];
 }
 
 export interface ExternalBookResult {
@@ -130,12 +168,16 @@ export async function searchOpenLibrary(query: string, limit = 8): Promise<Exter
   return data.results;
 }
 
-/** Top daily trending books from Open Library (with covers). */
-export async function getTrendingBooks(limit = 10): Promise<ExternalBookResult[]> {
-  const res = await fetch(`${API_BASE}/open-library/trending?limit=${limit}`);
-  if (!res.ok) throw new Error(`Failed to load trending books: ${res.status}`);
-  const data = await res.json();
-  return data.results;
+/** Trending books from the external trending API gateway (NYT + Open Library). */
+export async function getTrendingBooks(): Promise<TrendingBooksResponse> {
+  const base = TRENDING_API_BASE || API_BASE;
+  const res = await fetch(`${base}/trending-books`);
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch trending books: ${res.status}`);
+  }
+
+  return res.json();
 }
 
 export interface FavoriteBook {
@@ -289,8 +331,6 @@ export async function getBookInfo(bookRef: string | number): Promise<BookDetails
     chunkCount: data.chunk_count,
   };
 }
-
-// Authentication-related API functions
 
 // Authentication-related API functions
 

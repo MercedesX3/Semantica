@@ -12,3 +12,6 @@ backend/lambda/functions/function.zip
 backend/lambda/response.json
 backend/lambda/function.zip
 backend/notes.txt
+backend/lambda/functions/getTrendingBooks.zip
+backend/lambda/functions/response.json
+backend/lambda/functions/response.json

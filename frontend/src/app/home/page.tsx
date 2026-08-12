@@ -6,7 +6,11 @@ import AppShell from "@/components/AppShell";
 import BookCard, { BookData } from "@/components/ui/BookCard";
 import GenreTag from "@/components/ui/GenreTag";
 import { Star } from "lucide-react";
-import { getForYouRecommendations, getTrendingBooks } from "@/lib/api";
+import {
+  getForYouRecommendations,
+  getTrendingBooks,
+  TrendingBook,
+} from "@/lib/api";
 
 const DNA_GENRES = [
   {
@@ -173,21 +177,30 @@ export default function HomePage() {
           })),
         );
       })
-      //.catch(() => {/* keep mock picks on failure */});
+      .catch(() => {
+        // keep mock picks on failure
+      });
 
-    getTrendingBooks(10)
-      .then((books) => {
-        if (books.length === 0) return;
+    getTrendingBooks()
+      .then((data) => {
+        const combined = [
+          ...data.nytimes,
+          ...data.open_library,
+        ];
+        if (combined.length === 0) return;
+
         setTrending(
-          books.map((b, i) => ({
-            id: b.key ? (b.key.split("/").pop() ?? `trending-${i}`) : `trending-${i}`,
-            title: b.title,
-            author: b.author,
-            coverUrl: b.cover_url,
+          combined.map((book, i) => ({
+            id: book.source_id ?? `${book.source}-${book.source_rank}-${i}`,
+            title: book.title,
+            author: book.author,
+            coverUrl: book.cover_url ?? undefined,
           })),
         );
       })
-      .catch(() => {/* keep fallback trending on failure */});
+      .catch(() => {
+        // keep fallback trending on failure
+      });
   }, []);
 
   return (
