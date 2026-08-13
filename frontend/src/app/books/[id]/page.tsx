@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Heart, Star, MessageSquare, BookOpen, Check } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import GenreTag from "@/components/ui/GenreTag";
+import EmotionalDnaCard from "@/components/EmotionalDnaCard";
 import { useShelf } from "@/hooks/useShelf";
 import {
+  findLocalBook,
   getBookDNA,
   getBookInfo,
   getRelatedBooks,
@@ -18,94 +20,6 @@ import {
 } from "@/lib/api";
 
 type Tab = "reviews" | "similar";
-
-/**
- * Sentiment arc, pacing and themes for an analysed book.
- *
- * This only renders when real DNA exists. It previously fell back to a
- * hardcoded arc and a 35% pacing bar, so every un-analysed book displayed an
- * invented emotional profile as if it were measured.
- */
-function EmotionalDNA({ dna }: { dna: BookDNA }) {
-  const W = 500;
-  const H = 96;
-  const mid = H * 0.55;
-
-  const points = useMemo(() => {
-    const series = dna.arc.sentiment_series;
-    if (series.length === 0) return "";
-    return series
-      .map((value, i) => {
-        const x = series.length > 1 ? (i / (series.length - 1)) * W : W / 2;
-        // sentiment runs -1..1; map onto the plot height
-        const y = H - ((value + 1) / 2) * H;
-        return `${x},${y}`;
-      })
-      .join(" ");
-  }, [dna]);
-
-  const pacing = Math.round(dna.style_profile.avg_pacing * 100);
-  const pacingLabel = pacing >= 70 ? "FAST" : pacing >= 40 ? "MODERATE" : "SLOW-BURN";
-  const themes = dna.theme_profile.top.map((t) => t.theme);
-
-  return (
-    <div className="bg-stone-50 pop-lg edge-thin p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="text-base font-semibold font-sans">Emotional DNA</span>
-        <span className="text-xs font-medium font-mono text-zinc-500 uppercase tracking-wide">
-          {dna.emotion_profile.arc_label}
-        </span>
-      </div>
-
-      <div className="relative w-full" style={{ height: H }}>
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-full h-full"
-          preserveAspectRatio="none"
-          role="img"
-          aria-label={`Sentiment arc: ${dna.emotion_profile.beginning_emotion} at the start, ${dna.emotion_profile.middle_emotion} in the middle, ${dna.emotion_profile.end_emotion} by the end.`}
-        >
-          <line x1="0" y1={mid} x2={W} y2={mid} stroke="#a3a3a3" strokeWidth="2.5" strokeDasharray="9 5" />
-          <polyline
-            points={points}
-            fill="none"
-            stroke="var(--brand)"
-            strokeWidth="3.5"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
-
-      <div className="flex justify-between text-xs font-bold font-mono">
-        <span>BEGINNING</span>
-        <span>END</span>
-      </div>
-
-      <div className="flex items-center gap-2.5">
-        <span className="text-sm font-semibold font-mono shrink-0">PACING</span>
-        <div className="flex-1 h-7 rounded-sm edge-thin flex overflow-hidden">
-          <div className="bg-brand h-full" style={{ width: `${Math.max(0, Math.min(100, pacing))}%` }} />
-          <div className="bg-white flex-1 h-full" />
-        </div>
-        <span className="text-sm font-semibold font-mono shrink-0">{pacingLabel}</span>
-      </div>
-
-      {themes.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
-          {themes.map((theme) => (
-            <span
-              key={theme}
-              className="h-8 px-4 bg-white rounded-md edge pop text-sm font-semibold font-mono inline-flex items-center"
-            >
-              {theme}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function BookDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -118,6 +32,13 @@ export default function BookDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("similar");
   const [related, setRelated] = useState<ExternalBookResult[] | null>(null);
+  /** Our own book id, when this title has been ingested locally. */
+  const [, setLocalBookId] = useState<number | null>(null);
+
+  const handleAnalysed = useCallback((bookId: number, fresh: BookDNA) => {
+    setLocalBookId(bookId);
+    setDna(fresh);
+  }, []);
 
   useEffect(() => {
     if (!id) {
@@ -137,17 +58,28 @@ export default function BookDetailPage() {
         if (cancelled) return;
         setBook(bookData);
 
-        // DNA only exists for ingested numeric book ids.
+        // DNA is keyed by our own numeric book id. A page reached by Open
+        // Library key still has DNA if the same title has been ingested, so
+        // fall back to a title match rather than assuming there's none.
         const numericId = Number(bookData.id);
-        if (Number.isInteger(numericId) && bookData.source === "database") {
-          try {
-            const dnaData = await getBookDNA(numericId);
-            if (!cancelled) setDna(dnaData);
-          } catch {
-            if (!cancelled) setDna(null);
-          }
-        } else {
+        const localId =
+          Number.isInteger(numericId) && bookData.source === "database"
+            ? numericId
+            : (await findLocalBook(bookData.title))?.id ?? null;
+
+        if (cancelled) return;
+        setLocalBookId(localId);
+
+        if (localId == null) {
           setDna(null);
+          return;
+        }
+
+        try {
+          const dnaData = await getBookDNA(localId);
+          if (!cancelled) setDna(dnaData);
+        } catch {
+          if (!cancelled) setDna(null);
         }
       } catch (err) {
         if (!cancelled) {
@@ -307,19 +239,12 @@ export default function BookDetailPage() {
               </p>
             </div>
 
-            {dna ? (
-              <EmotionalDNA dna={dna} />
-            ) : (
-              <div className="bg-stone-50 edge-thin pop p-5 flex flex-col gap-2">
-                <p className="text-base font-semibold font-sans">Emotional DNA not available yet</p>
-                <p className="text-sm font-semibold font-sans text-zinc-600 leading-relaxed">
-                  Sentiment arc, pacing, and themes are measured from the book&apos;s
-                  full text. This title hasn&apos;t been ingested and analysed by
-                  Semantica yet, so there&apos;s nothing to show — rather than a
-                  guess.
-                </p>
-              </div>
-            )}
+            <EmotionalDnaCard
+              dna={dna}
+              bookTitle={book.title}
+              bookAuthor={book.author}
+              onAnalysed={handleAnalysed}
+            />
           </div>
         </div>
 

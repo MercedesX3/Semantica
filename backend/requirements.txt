@@ -13,11 +13,18 @@ psycopg2-binary==2.9.9
 pgvector==0.3.6
 
 # Authentication
-passlib[bcrypt]==1.7.5
-python-jose==3.3.1
+# app/core/security.py uses pwdlib (Argon2id) + PyJWT. passlib and python-jose
+# were pinned here but never imported, while pwdlib — which the code actually
+# requires — was missing, so a clean install failed at import.
+pwdlib==0.3.0
+argon2-cffi==25.1.0
+PyJWT==2.13.0
 email-validator
 boto3
-PyJWT
+
+# File uploads (PDF ingestion)
+pypdf==6.15.0
+python-multipart==0.0.32
 
 # NLP + ML
 torch

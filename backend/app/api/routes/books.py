@@ -1,4 +1,16 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+import io
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
+from pypdf import PdfReader
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
@@ -22,19 +34,39 @@ from app.ml.embedding_pipeline import get_embedding
 
 router = APIRouter()
 
+# Ingestion runs embeddings in-request, so uploads are bounded. A full novel is
+# comfortably under these limits; anything larger is almost certainly a mistake.
+MAX_PDF_BYTES = 40 * 1024 * 1024
+MAX_INGEST_CHARS = 5_000_000
+MIN_INGEST_CHARS = 100
+
 
 @router.get("/", response_model=list[BookSummary])
 def list_books(db: Session = Depends(get_db)):
     return db.query(Book).all()
 
 
-@router.post("/ingest", response_model=IngestResponse, status_code=201)
-def ingest_book(body: IngestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    book = Book(title=body.title, author=body.author, raw_text=body.text)
+def _ingest_text(
+    db: Session,
+    background_tasks: BackgroundTasks,
+    title: str,
+    author: str,
+    text: str,
+) -> IngestResponse:
+    """Chunk, embed, and store a book, then queue the DNA pipeline.
+
+    Shared by the JSON and PDF ingest routes so both paths produce identical
+    chunking, embeddings, and background analysis.
+    """
+    book = Book(title=title, author=author, raw_text=text)
     db.add(book)
     db.flush()  # get book.id without committing
 
-    chunk_specs = chunk_text_by_chapter(body.text)
+    chunk_specs = chunk_text_by_chapter(text)
+    if not chunk_specs:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="No readable text found in this book.")
+
     embeddings = embed_chunks([spec["text"] for spec in chunk_specs])
 
     chunk_rows = [
@@ -68,6 +100,53 @@ def ingest_book(body: IngestRequest, background_tasks: BackgroundTasks, db: Sess
         analysis_job_id=job.id,
         message="Book ingested; DNA analysis running in background",
     )
+
+
+@router.post("/ingest", response_model=IngestResponse, status_code=201)
+def ingest_book(body: IngestRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    return _ingest_text(db, background_tasks, body.title, body.author, body.text)
+
+
+@router.post("/ingest-pdf", response_model=IngestResponse, status_code=201)
+async def ingest_book_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    title: str = Form(..., min_length=1, max_length=500),
+    author: str = Form(..., min_length=1, max_length=300),
+    db: Session = Depends(get_db),
+):
+    """Ingest a book from an uploaded PDF.
+
+    The extracted text goes through the same pipeline as JSON ingest, so the
+    resulting DNA is identical to a text upload of the same book.
+    """
+    if file.content_type not in (None, "application/pdf", "application/octet-stream"):
+        raise HTTPException(status_code=415, detail="Please upload a PDF file.")
+
+    raw = await file.read()
+    if len(raw) > MAX_PDF_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"PDF is too large (max {MAX_PDF_BYTES // (1024 * 1024)}MB).",
+        )
+
+    try:
+        reader = PdfReader(io.BytesIO(raw))
+        text = "\n\n".join(page.extract_text() or "" for page in reader.pages).strip()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Couldn't read that PDF — it may be corrupted.")
+
+    if len(text) < MIN_INGEST_CHARS:
+        # Almost always a scanned/image-only PDF with no embedded text layer.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "No selectable text found in this PDF. Scanned or image-only "
+                "PDFs need OCR before they can be analysed."
+            ),
+        )
+
+    return _ingest_text(db, background_tasks, title, author, text[:MAX_INGEST_CHARS])
 
 
 @router.get("/search", response_model=SearchResponse)

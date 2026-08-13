@@ -3,17 +3,19 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Dna, Info, X } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import BookCard, { BookData } from "@/components/ui/BookCard";
 import { useShelf } from "@/hooks/useShelf";
 import { readTasteProfile, TasteProfile } from "@/lib/taste";
 import { readCachedUser } from "@/lib/session";
 import {
+  getAnalysedBooks,
   getForYouRecommendations,
   getPicksByGenres,
   getTrendingBooks,
   normalizeWorkKey,
+  AnalysedBook,
   ForYouBook,
 } from "@/lib/api";
 
@@ -144,10 +146,25 @@ export default function HomePage() {
   const [picks, setPicks] = useState<RailState>({ status: "loading" });
   const [picksFromTaste, setPicksFromTaste] = useState(false);
   const [trending, setTrending] = useState<RailState>({ status: "loading" });
+  const [analysed, setAnalysed] = useState<AnalysedBook[]>([]);
+  const [dnaInfoOpen, setDnaInfoOpen] = useState(false);
 
   useEffect(() => {
     setTaste(readTasteProfile());
     setFirstName(readCachedUser()?.first_name ?? null);
+  }, []);
+
+  // Books Semantica has actually read — the only ones with a real DNA profile.
+  useEffect(() => {
+    let cancelled = false;
+    getAnalysedBooks()
+      .then((books) => {
+        if (!cancelled) setAnalysed(books);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -366,8 +383,148 @@ export default function HomePage() {
               ))}
             </ul>
           )}
+
+          {/* ── Books with real DNA ─────────────────────────── */}
+          <section className="mt-10 pt-8 border-t-2 border-black/10">
+            <div className="flex items-start gap-2">
+              <h2 className="text-xl sm:text-2xl font-bold font-sans">Want to check out book DNA?</h2>
+              <button
+                type="button"
+                onClick={() => setDnaInfoOpen(true)}
+                aria-label="How book DNA is calculated"
+                className="mt-1 shrink-0 cursor-pointer text-zinc-500 transition-colors hover:text-brand-strong"
+              >
+                <Info className="w-4.5 h-4.5" aria-hidden />
+              </button>
+            </div>
+            <p className="mt-1.5 mb-5 text-sm font-semibold text-zinc-600 leading-relaxed">
+              {analysed.length > 0
+                ? "Semantica has read these end to end — open one to see its sentiment arc, pacing, and themes."
+                : "No books have been analysed yet. Open any book and upload its PDF to build the first profile."}
+            </p>
+
+            {analysed.length > 0 && (
+              <ul className="flex xl:flex-col gap-3 overflow-x-auto rail pb-2 xl:pb-0">
+                {analysed.map((book) => (
+                  <li key={book.id} className="shrink-0 w-64 xl:w-full">
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/books/${book.id}`)}
+                      className="w-full flex items-center gap-3 bg-stone-50 edge pop-sm press rounded-md p-3 text-left cursor-pointer"
+                    >
+                      <Dna className="w-4 h-4 shrink-0 text-brand-strong" aria-hidden />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-bold font-sans truncate">
+                          {book.title}
+                        </span>
+                        <span className="block text-xs font-semibold font-sans text-zinc-600 truncate">
+                          {book.author}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono text-[0.6rem] uppercase tracking-wider text-zinc-500">
+                        {book.arcLabel}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </aside>
       </div>
+
+      {dnaInfoOpen && <DnaInfoDialog onClose={() => setDnaInfoOpen(false)} />}
     </AppShell>
+  );
+}
+
+const DNA_STEPS = [
+  {
+    title: "Split into passages",
+    body: "The full text is cut into overlapping chunks of roughly 400 words, kept aligned to chapter boundaries so a passage never straddles two scenes.",
+  },
+  {
+    title: "Score every passage",
+    body: "Each chunk is classified for emotion, intensity, pacing, and dialogue density. Pacing comes from sentence length and dialogue share; sentiment runs from \u22121 to +1.",
+  },
+  {
+    title: "Pull out themes",
+    body: "A zero-shot classifier tests each chapter against a set of candidate themes and keeps the ones it is most confident about — that's where “grief” or “found family” comes from.",
+  },
+  {
+    title: "Fold it into one profile",
+    body: "The per-passage scores are aggregated into the arc you see: sentiment sampled across the book, an average pacing value, the dominant emotion at the start, middle, and end, and the top themes.",
+  },
+];
+
+/** Explains where the numbers on the Emotional DNA panel come from. */
+function DnaInfoDialog({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-3 sm:p-6"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dna-info-title"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg max-h-[85vh] overflow-y-auto bg-stone-50 edge pop-lg rounded-lg p-6 sm:p-8 flex flex-col gap-5"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-mono text-[0.65rem] uppercase tracking-[0.2em] text-brand-strong mb-1">
+              How it works
+            </p>
+            <h2 id="dna-info-title" className="text-2xl font-bold font-sans tracking-tight">
+              How book DNA is calculated
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-md bg-white edge pop-sm press cursor-pointer"
+          >
+            <X className="w-4 h-4" strokeWidth={3} aria-hidden />
+          </button>
+        </div>
+
+        <p className="text-sm font-semibold text-zinc-600 leading-relaxed">
+          Every figure on the Emotional DNA panel is measured from the book&apos;s
+          own text. Nothing is taken from a blurb, a genre label, or a rating.
+        </p>
+
+        <ol className="flex flex-col gap-4">
+          {DNA_STEPS.map(({ title, body }, i) => (
+            <li key={title} className="flex gap-3">
+              <span className="shrink-0 mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-brand text-white edge-thin font-mono text-xs font-bold">
+                {i + 1}
+              </span>
+              <span>
+                <span className="block font-sans font-bold text-base leading-tight">{title}</span>
+                <span className="block mt-1 text-sm font-semibold text-zinc-600 leading-relaxed">
+                  {body}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
+
+        <p className="text-xs font-semibold text-zinc-500 leading-relaxed border-t-2 border-black/10 pt-4">
+          A book only gets a profile once its full text has been ingested and
+          analysed — which is why most titles show an upload prompt instead of a
+          chart.
+        </p>
+      </div>
+    </div>
   );
 }

@@ -16,6 +16,8 @@ const OPEN_LIBRARY_COVERS = "https://covers.openlibrary.org";
  */
 const TIMEOUT_OWN_API = 3000;
 const TIMEOUT_UPSTREAM = 20000;
+/** Book ingestion embeds every chunk in-request; a full novel takes minutes. */
+const TIMEOUT_INGEST = 15 * 60 * 1000;
 
 /**
  * fetch with a hard timeout. Without this, a Semantica backend that isn't
@@ -85,6 +87,127 @@ export async function searchBooks(query: string, k = 5): Promise<SearchResult[]>
 export async function getBooks(): Promise<BookSummary[]> {
   const res = await fetchWithTimeout(`${API_BASE}/books/`);
   if (!res.ok) throw new Error(`Failed to load books: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Loose title key for matching an Open Library work against a locally
+ * ingested book. Drops punctuation and leading articles, because the two
+ * sources disagree on both ("Romeo and Juliet" vs "Romeo & Juliet").
+ */
+function titleKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/^(the|a|an)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Find the locally ingested book matching a title, if one exists.
+ *
+ * Book detail pages are reached by Open Library work key, but DNA is keyed by
+ * our own numeric book id — this bridges the two so an ingested book shows its
+ * real analysis instead of the "not available yet" state. Matched on title
+ * alone: the two sources routinely disagree on author spelling
+ * ("Dostoyevsky" vs "Dostoevsky").
+ */
+export async function findLocalBook(title: string): Promise<BookSummary | null> {
+  try {
+    const books = await getBooks();
+    const target = titleKey(title);
+    if (!target) return null;
+    return books.find((book) => titleKey(book.title) === target) ?? null;
+  } catch {
+    // No local backend — the page falls back to its un-analysed state.
+    return null;
+  }
+}
+
+export interface AnalysedBook extends BookSummary {
+  /** Headline arc label from the book's DNA, e.g. "Meditative". */
+  arcLabel: string;
+}
+
+/**
+ * Locally ingested books that have a built DNA profile.
+ *
+ * These are the only books whose Emotional DNA panel has real data, so the UI
+ * surfaces them explicitly rather than leaving readers to guess which titles
+ * have been analysed.
+ */
+export async function getAnalysedBooks(): Promise<AnalysedBook[]> {
+  let books: BookSummary[];
+  try {
+    books = await getBooks();
+  } catch {
+    return [];
+  }
+
+  const checked = await Promise.all(
+    books.map(async (book) => {
+      try {
+        const dna = await getBookDNA(book.id);
+        return dna ? { ...book, arcLabel: dna.emotion_profile.arc_label } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return checked.filter((book): book is AnalysedBook => book !== null);
+}
+
+export interface IngestResponse {
+  id: number;
+  title: string;
+  author: string;
+  chunk_count: number;
+  analysis_job_id: number;
+  message: string;
+}
+
+export interface AnalysisJob {
+  job_id: number;
+  book_id: number;
+  status: "pending" | "running" | "completed" | "failed";
+  stage: string | null;
+  error: string | null;
+}
+
+/**
+ * Upload a book PDF for analysis. Chunking and embedding happen in-request,
+ * so this needs a far longer budget than a normal API call — a full novel
+ * takes minutes.
+ */
+export async function ingestBookPdf(
+  file: File,
+  title: string,
+  author: string
+): Promise<IngestResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("title", title);
+  form.append("author", author);
+
+  const res = await fetchWithTimeout(
+    `${API_BASE}/books/ingest-pdf`,
+    { method: "POST", body: form },
+    TIMEOUT_INGEST
+  );
+
+  if (!res.ok) {
+    throw new Error(await getErrorMessage(res, `Upload failed: ${res.status}`));
+  }
+  return res.json();
+}
+
+/** Poll the background DNA pipeline kicked off by ingest. */
+export async function getAnalysisJob(jobId: number): Promise<AnalysisJob> {
+  const res = await fetchWithTimeout(`${API_BASE}/themes/jobs/${jobId}`, {}, TIMEOUT_UPSTREAM);
+  if (!res.ok) throw new Error(`Failed to read analysis job: ${res.status}`);
   return res.json();
 }
 
