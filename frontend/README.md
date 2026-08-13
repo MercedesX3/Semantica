@@ -53,12 +53,27 @@ explicit empty state rather than fabricated content.
 | `/library` | Saved books |
 | `/books/[id]` | Book detail — accepts an ingested book id or an Open Library work key |
 | `/profile` | Reading profile + saved books + sign out |
-| `/scroll`, `/map`, `/soundtracks` | Gated behind Coming Soon until real data backs them |
+| `/map` | The Book Map — force-directed book-genome graph (canvas) |
+| `/soundtracks`, `/soundtracks/[bookId]` | Chapter-synced playlists and their track lists |
+| `/scroll` | Gated behind Coming Soon until real data backs it |
 | `/internal/chunk-explorer` | Internal tooling — `noindex`, not in the nav |
 
-`src/app/map/_prototype/` holds the working pan/zoom map canvas. It's inside a
-private (`_`-prefixed) folder so the App Router ignores it; it ships once the
-clustering endpoint can supply real coordinates.
+### The Book Map
+
+`/map` renders a force-directed graph of books linked by shared "genes"
+(tropes). The simulation and canvas renderer live in `src/lib/bookGraph.ts` as a
+plain class that owns its own RAF loop — React mounts it and renders the
+surrounding chrome, so per-frame work never round-trips through React state.
+Three layouts: `web` (force-directed), `orbit` (neighbours ringed around a
+focus), `cluster` (pulled toward genre centres).
+
+The dataset in `src/lib/bookGenome.ts` is curated: real titles and
+bibliographic data, with hand-authored trope tags — not measurements computed
+from book text. Books ingested and analysed by the backend are meant to join it
+with genes derived from their real theme profile.
+
+`src/app/map/_prototype/` holds the earlier mock-data map canvas, kept inside a
+private (`_`-prefixed) folder so the App Router ignores it.
 
 ---
 

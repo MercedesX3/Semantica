@@ -7,28 +7,34 @@ interface GenreTagProps {
 }
 
 /**
- * Text colour is chosen per swatch for contrast — light fills take black
- * text, saturated fills take white. Previously every chip used stone-50,
- * which was unreadable on the amber/emerald/pink swatches.
+ * The genre palette for the whole product.
+ *
+ * `bg`/`text` are Tailwind classes for DOM chips; `hex` is the same colour for
+ * surfaces that can't use classes — the Book Map draws its nodes onto a canvas.
+ * They live in one table so a genre can never be violet in one place and amber
+ * in another.
+ *
+ * Text colour is chosen per swatch for contrast — light fills take black text,
+ * saturated fills take white.
  */
-const GENRE_STYLES: Record<string, { bg: string; text: string }> = {
-  Fantasy: { bg: "bg-violet-500", text: "text-white" },
-  "Science Fiction": { bg: "bg-blue-700", text: "text-white" },
-  "Sci-Fi": { bg: "bg-blue-700", text: "text-white" },
-  Dystopian: { bg: "bg-red-500", text: "text-white" },
-  Classic: { bg: "bg-emerald-300", text: "text-black" },
-  Literary: { bg: "bg-amber-400", text: "text-black" },
-  Thriller: { bg: "bg-orange-400", text: "text-black" },
-  Horror: { bg: "bg-sky-500", text: "text-white" },
-  Mystery: { bg: "bg-indigo-500", text: "text-white" },
-  Historical: { bg: "bg-yellow-300", text: "text-black" },
-  Poetry: { bg: "bg-rose-300", text: "text-black" },
-  Romance: { bg: "bg-pink-200", text: "text-black" },
-  "Non Fiction": { bg: "bg-emerald-600", text: "text-white" },
-  Fiction: { bg: "bg-teal-500", text: "text-white" },
+const GENRE_STYLES: Record<string, { bg: string; text: string; hex: string }> = {
+  Fantasy: { bg: "bg-violet-500", text: "text-white", hex: "#8b5cf6" },
+  "Science Fiction": { bg: "bg-blue-700", text: "text-white", hex: "#1d4ed8" },
+  "Sci-Fi": { bg: "bg-blue-700", text: "text-white", hex: "#1d4ed8" },
+  Dystopian: { bg: "bg-red-500", text: "text-white", hex: "#ef4444" },
+  Classic: { bg: "bg-emerald-300", text: "text-black", hex: "#6ee7b7" },
+  Literary: { bg: "bg-amber-400", text: "text-black", hex: "#fbbf24" },
+  Thriller: { bg: "bg-orange-400", text: "text-black", hex: "#fb923c" },
+  Horror: { bg: "bg-sky-500", text: "text-white", hex: "#0ea5e9" },
+  Mystery: { bg: "bg-indigo-500", text: "text-white", hex: "#6366f1" },
+  Historical: { bg: "bg-yellow-300", text: "text-black", hex: "#fde047" },
+  Poetry: { bg: "bg-rose-300", text: "text-black", hex: "#fda4af" },
+  Romance: { bg: "bg-pink-200", text: "text-black", hex: "#fbcfe8" },
+  "Non Fiction": { bg: "bg-emerald-600", text: "text-white", hex: "#059669" },
+  Fiction: { bg: "bg-teal-500", text: "text-white", hex: "#14b8a6" },
 };
 
-const DEFAULT_STYLE = { bg: "bg-zinc-300", text: "text-black" };
+const DEFAULT_STYLE = { bg: "bg-zinc-300", text: "text-black", hex: "#d4d4d8" };
 
 export const GENRES = Object.keys(GENRE_STYLES);
 
@@ -51,6 +57,11 @@ function resolve(genre: string) {
   if (aliased) return GENRE_STYLES[aliased];
   const cased = GENRES.find((g) => g.toLowerCase() === key);
   return cased ? GENRE_STYLES[cased] : DEFAULT_STYLE;
+}
+
+/** The genre's hex swatch, for canvas and other non-class surfaces. */
+export function genreHex(genre: string): string {
+  return resolve(genre).hex;
 }
 
 export default function GenreTag({ genre, size = "sm", className = "" }: GenreTagProps) {

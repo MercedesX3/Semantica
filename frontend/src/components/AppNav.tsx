@@ -13,7 +13,7 @@ export const NAV_LINKS = [
   { label: "Browse", href: "/home" },
   { label: "Library", href: "/library" },
   { label: "Book Scroll", href: "/scroll", soon: true },
-  { label: "Map", href: "/map", soon: true },
+  { label: "Map", href: "/map" },
   { label: "Soundtracks", href: "/soundtracks", soon: true },
 ];
 
