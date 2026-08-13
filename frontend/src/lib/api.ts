@@ -2,6 +2,44 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const TRENDING_API_BASE = process.env.NEXT_PUBLIC_TRENDING_API_URL ?? "";
 
+/** Public Open Library, used directly when our own API is unreachable. */
+const OPEN_LIBRARY = "https://openlibrary.org";
+const OPEN_LIBRARY_COVERS = "https://covers.openlibrary.org";
+
+/**
+ * How long to wait before giving up on a request.
+ *
+ * Our own API gets a short budget — when it isn't running we want to fail
+ * fast and fall back. Open Library gets a much longer one: its subject
+ * searches routinely take five to fifteen seconds, and cutting them off
+ * early left screens stuck on "Loading…".
+ */
+const TIMEOUT_OWN_API = 3000;
+const TIMEOUT_UPSTREAM = 20000;
+
+/**
+ * fetch with a hard timeout. Without this, a Semantica backend that isn't
+ * running leaves requests pending until the browser gives up, so every
+ * screen sits in a loading state instead of falling back.
+ */
+async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = TIMEOUT_OWN_API) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Strip a leading slash / "works/" prefix off an Open Library work key. */
+export function normalizeWorkKey(ref: string | number): string {
+  return String(ref)
+    .replace(/^\/+/, "")
+    .replace(/^works\//i, "")
+    .trim();
+}
+
 export interface SearchResult {
   book_id: number;
   title: string;
@@ -45,7 +83,7 @@ export async function searchBooks(query: string, k = 5): Promise<SearchResult[]>
 }
 
 export async function getBooks(): Promise<BookSummary[]> {
-  const res = await fetch(`${API_BASE}/books/`);
+  const res = await fetchWithTimeout(`${API_BASE}/books/`);
   if (!res.ok) throw new Error(`Failed to load books: ${res.status}`);
   return res.json();
 }
@@ -108,13 +146,60 @@ export interface ForYouBook {
   subject: string | null;
 }
 
-/** Cover-rich recommendations seeded from the user's favorites. */
+/**
+ * Cover-rich recommendations seeded from the user's favourites.
+ *
+ * This lives on the Semantica API, not the trending gateway — pointing it at
+ * TRENDING_API_BASE meant it 404'd against the deployed Lambda every time.
+ */
 export async function getForYouRecommendations(limit = 10): Promise<ForYouBook[]> {
-  const base = TRENDING_API_BASE || API_BASE;
-  const res = await fetch(`${base}/recommendations/for-you?limit=${limit}`);
+  const res = await fetchWithTimeout(`${API_BASE}/recommendations/for-you?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to load recommendations: ${res.status}`);
   const data = await res.json();
   return data.results;
+}
+
+/**
+ * Fallback picks built from the genres the reader chose during onboarding.
+ * Weaker than the embedding-based recommender, but real, explainable, and
+ * available without a backend — so Browse is never an empty screen.
+ */
+export async function getPicksByGenres(genres: string[], limit = 10): Promise<ForYouBook[]> {
+  if (genres.length === 0) return [];
+
+  const chosen = genres.slice(0, 3);
+  const perGenre = Math.max(3, Math.ceil(limit / chosen.length));
+
+  const batches = await Promise.all(
+    chosen.map(async (genre) => {
+      try {
+        const results = await searchOpenLibrary(`subject:"${genre}"`, perGenre);
+        return results.map((book) => ({
+          key: book.key,
+          title: book.title,
+          author: book.author,
+          cover_url: book.cover_url,
+          genre,
+          subject: genre,
+        }));
+      } catch {
+        return [];
+      }
+    })
+  );
+
+  // Interleave so the rail isn't three genre blocks in a row.
+  const merged: ForYouBook[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < perGenre; i++) {
+    for (const batch of batches) {
+      const item = batch[i];
+      if (!item || !item.key || seen.has(item.key)) continue;
+      seen.add(item.key);
+      merged.push(item);
+    }
+  }
+  return merged.slice(0, limit);
 }
 
 export interface TrendingBook {
@@ -159,25 +244,140 @@ export interface ExternalBookResult {
   cover_url: string | null;
 }
 
+interface OpenLibrarySearchDoc {
+  key: string;
+  title: string;
+  author_name?: string[];
+  cover_i?: number;
+}
+
+/** Search books. Prefers our API; falls back to public Open Library. */
 export async function searchOpenLibrary(query: string, limit = 8): Promise<ExternalBookResult[]> {
-  const res = await fetch(
-    `${API_BASE}/open-library/search?q=${encodeURIComponent(query)}&limit=${limit}`
+  try {
+    const res = await fetchWithTimeout(
+      `${API_BASE}/open-library/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.results)) return data.results;
+    }
+  } catch {
+    // fall through to the public API below
+  }
+
+  const res = await fetchWithTimeout(
+    `${OPEN_LIBRARY}/search.json?q=${encodeURIComponent(query)}&limit=${limit}` +
+      `&fields=key,title,author_name,cover_i`,
+    {},
+    TIMEOUT_UPSTREAM
   );
-  if (!res.ok) throw new Error(`Open Library search failed: ${res.status}`);
-  const data = await res.json();
-  return data.results;
+  if (!res.ok) throw new Error(`Book search failed: ${res.status}`);
+  const data: { docs?: OpenLibrarySearchDoc[] } = await res.json();
+
+  return (data.docs ?? []).map((doc) => ({
+    key: doc.key,
+    title: doc.title,
+    author: doc.author_name?.[0] ?? "Unknown author",
+    cover_url: doc.cover_i ? `${OPEN_LIBRARY_COVERS}/b/id/${doc.cover_i}-M.jpg` : null,
+  }));
+}
+
+/**
+ * Open Library subjects are a mix of real themes and library-shelf metadata.
+ * Taking subjects[0] blindly gave books a "genre" of "New York Times
+ * bestseller" and then recommended every other bestseller as a similar read.
+ */
+const SUBJECT_NOISE =
+  /bestseller|new york times|nyt|accessible book|protected daisy|in library|overdrive|large type|reading level|lending library|award|open library staff picks|popular print|book club|collections|readers|specimens|translations into/i;
+
+/** Subjects that map cleanly onto a genre we already have a swatch for. */
+const SUBJECT_GENRE_HINTS: [RegExp, string][] = [
+  [/science fiction/i, "Science Fiction"],
+  [/fantasy|magic|wizard/i, "Fantasy"],
+  [/horror|ghost|haunt/i, "Horror"],
+  [/dystopi|post-apocalyp/i, "Dystopian"],
+  [/detective|mystery|crime/i, "Mystery"],
+  [/thriller|suspense/i, "Thriller"],
+  [/romance|love stories/i, "Romance"],
+  [/historical fiction|historical/i, "Historical"],
+  [/poetry|poems/i, "Poetry"],
+  [/classic literature|classics/i, "Classic"],
+  [/biography|memoir|history|essays/i, "Non Fiction"],
+];
+
+/**
+ * Pick the most useful subject to show as a genre and to search neighbours by.
+ * Prefers a recognisable genre, then the first non-noise subject.
+ */
+export function pickSubject(subjects?: string[]): string | null {
+  if (!subjects || subjects.length === 0) return null;
+  const usable = subjects.filter((s) => s && !SUBJECT_NOISE.test(s));
+
+  for (const [pattern, genre] of SUBJECT_GENRE_HINTS) {
+    if (usable.some((s) => pattern.test(s))) return genre;
+  }
+
+  // Fall back to the first short, topic-shaped subject.
+  const topical = usable.find((s) => s.length <= 30 && !/\d/.test(s));
+  return topical ?? usable[0] ?? null;
+}
+
+/**
+ * Books that share a subject with the one being viewed. Real relations from
+ * Open Library rather than an invented "similar books" list — the semantic
+ * version replaces this once a book has been ingested and embedded.
+ */
+export async function getRelatedBooks(
+  subject: string,
+  excludeKey: string,
+  limit = 8
+): Promise<ExternalBookResult[]> {
+  const results = await searchOpenLibrary(`subject:"${subject}"`, limit + 4);
+  const excluded = normalizeWorkKey(excludeKey);
+  return results.filter((book) => normalizeWorkKey(book.key) !== excluded).slice(0, limit);
 }
 
 /** Trending books from the external trending API gateway (NYT + Open Library). */
 export async function getTrendingBooks(): Promise<TrendingBooksResponse> {
   const base = TRENDING_API_BASE || API_BASE;
-  const res = await fetch(`${base}/trending-books`);
+  const res = await fetchWithTimeout(`${base}/trending-books`, {}, TIMEOUT_UPSTREAM);
 
   if (!res.ok) {
     throw new Error(`Failed to fetch trending books: ${res.status}`);
   }
 
   return res.json();
+}
+
+/**
+ * Books to show in onboarding before the reader has typed a search.
+ *
+ * These used to be a hardcoded list with hardcoded Open Library cover ids,
+ * and the ids had gone stale — Circe rendered as "Faces in the Crowd" and
+ * Evelyn Hugo as a Llama Llama picture book. Resolving them at runtime keeps
+ * every cover matched to its actual title.
+ */
+export async function getStarterBooks(limit = 12): Promise<ExternalBookResult[]> {
+  try {
+    const trending = await getTrendingBooks();
+    const combined = [...trending.open_library, ...trending.nytimes]
+      .filter((book) => book.cover_url && book.source_id)
+      .map((book) => ({
+        key: book.source_id as string,
+        title: book.title,
+        author: book.author,
+        cover_url: book.cover_url ?? null,
+      }));
+    if (combined.length >= 6) return combined.slice(0, limit);
+  } catch {
+    // fall through to a plain popular-fiction search
+  }
+
+  try {
+    return await searchOpenLibrary('subject:"Fiction"', limit);
+  } catch {
+    return [];
+  }
 }
 
 export interface FavoriteBook {
@@ -189,30 +389,88 @@ export interface FavoriteBook {
   created_at: string;
 }
 
+/**
+ * Favourites fall back to a local shelf when the API is unreachable, so
+ * hearting and saving a book still works end to end without a backend.
+ * Local entries use negative ids to stay distinguishable from server rows.
+ */
+const LOCAL_SHELF_KEY = "semantica.shelf.v1";
+
+function readLocalShelf(): FavoriteBook[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_SHELF_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalShelf(books: FavoriteBook[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOCAL_SHELF_KEY, JSON.stringify(books));
+  } catch {
+    // storage full or blocked — the in-memory state still holds for this session
+  }
+}
+
 export async function getFavorites(): Promise<FavoriteBook[]> {
-  const res = await fetch(`${API_BASE}/favorites/`);
-  if (!res.ok) throw new Error(`Failed to load favorites: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/favorites/`);
+    if (res.ok) return await res.json();
+  } catch {
+    // fall through
+  }
+  return readLocalShelf();
 }
 
 export async function addFavorite(book: ExternalBookResult): Promise<FavoriteBook> {
-  const res = await fetch(`${API_BASE}/favorites/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      open_library_key: book.key,
-      title: book.title,
-      author: book.author,
-      cover_url: book.cover_url,
-    }),
-  });
-  if (!res.ok) throw new Error(`Failed to add favorite: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/favorites/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        open_library_key: book.key,
+        title: book.title,
+        author: book.author,
+        cover_url: book.cover_url,
+      }),
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // fall through
+  }
+
+  const shelf = readLocalShelf();
+  const existing = shelf.find((b) => b.open_library_key === book.key);
+  if (existing) return existing;
+
+  const favorite: FavoriteBook = {
+    id: -Date.now(),
+    open_library_key: book.key,
+    title: book.title,
+    author: book.author,
+    cover_url: book.cover_url,
+    created_at: new Date().toISOString(),
+  };
+  writeLocalShelf([favorite, ...shelf]);
+  return favorite;
 }
 
 export async function removeFavorite(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/favorites/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(`Failed to remove favorite: ${res.status}`);
+  if (id < 0) {
+    writeLocalShelf(readLocalShelf().filter((b) => b.id !== id));
+    return;
+  }
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/favorites/${id}`, { method: "DELETE" });
+    if (res.ok) return;
+  } catch {
+    // fall through
+  }
+  writeLocalShelf(readLocalShelf().filter((b) => b.id !== id));
 }
 
 export interface PlaylistTrack {
@@ -239,7 +497,14 @@ export interface PlaylistSummary {
   cover_url: string | null;
 }
 
-export interface BookPlaylist extends PlaylistSummary {
+/**
+ * The detail endpoint returns everything in PlaylistSummary *except*
+ * `chapter_count` and `cover_url`, so those are re-declared optional here.
+ * Derive the chapter count from `chapters.length` rather than trusting it.
+ */
+export interface BookPlaylist extends Omit<PlaylistSummary, "chapter_count" | "cover_url"> {
+  chapter_count?: number;
+  cover_url?: string | null;
   chapters: {
     chapter_index: number;
     title: string;
@@ -259,13 +524,13 @@ export interface BookPlaylist extends PlaylistSummary {
 }
 
 export async function listPlaylists(): Promise<PlaylistSummary[]> {
-  const res = await fetch(`${API_BASE}/playlists/`);
+  const res = await fetchWithTimeout(`${API_BASE}/playlists/`);
   if (!res.ok) throw new Error(`Failed to load playlists: ${res.status}`);
   return res.json();
 }
 
 export async function getBookPlaylist(bookId: number): Promise<BookPlaylist> {
-  const res = await fetch(`${API_BASE}/playlists/books/${bookId}`);
+  const res = await fetchWithTimeout(`${API_BASE}/playlists/books/${bookId}`);
   if (!res.ok) throw new Error(`Failed to load playlist: ${res.status}`);
   return res.json();
 }
@@ -304,15 +569,23 @@ export async function getBookInfo(bookRef: string | number): Promise<BookDetails
     ? decodeURIComponent(bookRef).trim()
     : String(bookRef);
 
-  const normalizedRef = decodedRef
-    .replace(/^\/+/, "")
-    .replace(/^works\//i, "")
-    .trim();
+  const normalizedRef = normalizeWorkKey(decodedRef);
 
-  const res = await fetch(`${API_BASE}/books/${encodeURIComponent(normalizedRef)}`);
+  let res: Response | null = null;
+  try {
+    res = await fetchWithTimeout(`${API_BASE}/books/${encodeURIComponent(normalizedRef)}`);
+  } catch {
+    res = null;
+  }
 
-  if (!res.ok) {
-    throw new Error(`Failed to load book: ${res.status}`);
+  if (!res || !res.ok) {
+    // Our API is unavailable (or doesn't know this book). If the reference
+    // looks like an Open Library work, read it straight from Open Library so
+    // the detail page still renders.
+    if (/^OL\w+W$/i.test(normalizedRef)) {
+      return getOpenLibraryWork(normalizedRef);
+    }
+    throw new Error(`Failed to load book: ${res ? res.status : "network error"}`);
   }
 
   const data: BookDetailsResponse = await res.json();
@@ -329,6 +602,68 @@ export async function getBookInfo(bookRef: string | number): Promise<BookDetails
     source: data.source,
     openLibraryKey: data.open_library_key,
     chunkCount: data.chunk_count,
+  };
+}
+
+interface OpenLibraryWork {
+  title?: string;
+  description?: string | { value?: string };
+  subjects?: string[];
+  covers?: number[];
+  authors?: { author?: { key?: string } }[];
+}
+
+/** Read a work directly from public Open Library (no Semantica backend needed). */
+async function getOpenLibraryWork(workKey: string): Promise<BookDetails> {
+  const res = await fetchWithTimeout(`${OPEN_LIBRARY}/works/${workKey}.json`, {}, TIMEOUT_UPSTREAM);
+  if (!res.ok) throw new Error(`Failed to load book: ${res.status}`);
+  const work: OpenLibraryWork = await res.json();
+
+  const description =
+    typeof work.description === "string"
+      ? work.description
+      : work.description?.value ?? null;
+
+  // Author and ratings each live behind their own endpoint; neither is
+  // essential, so a failure just leaves the field blank.
+  const [author, ratings] = await Promise.all([
+    (async () => {
+      const authorKey = work.authors?.[0]?.author?.key;
+      if (!authorKey) return "Unknown author";
+      try {
+        const r = await fetchWithTimeout(`${OPEN_LIBRARY}${authorKey}.json`, {}, TIMEOUT_UPSTREAM);
+        if (!r.ok) return "Unknown author";
+        const a: { name?: string } = await r.json();
+        return a.name ?? "Unknown author";
+      } catch {
+        return "Unknown author";
+      }
+    })(),
+    (async () => {
+      try {
+        const r = await fetchWithTimeout(`${OPEN_LIBRARY}/works/${workKey}/ratings.json`, {}, TIMEOUT_UPSTREAM);
+        if (!r.ok) return null;
+        const d: { summary?: { average?: number | null; count?: number | null } } = await r.json();
+        return d.summary ?? null;
+      } catch {
+        return null;
+      }
+    })(),
+  ]);
+
+  return {
+    id: workKey,
+    title: work.title ?? "Untitled",
+    author,
+    genre: pickSubject(work.subjects),
+    rating: ratings?.average ?? null,
+    ratings: ratings?.count ?? null,
+    coverUrl: work.covers?.[0] ? `${OPEN_LIBRARY_COVERS}/b/id/${work.covers[0]}-L.jpg` : null,
+    // Open Library descriptions often end with a "----- [source][1]" footer.
+    description: description ? description.replace(/\r?\n-{3,}[\s\S]*$/i, "").trim() : null,
+    source: "open_library",
+    openLibraryKey: `/works/${workKey}`,
+    chunkCount: null,
   };
 }
 

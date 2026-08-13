@@ -1,69 +1,80 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
-import { Heart, Star, ChevronDown, Search } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { Heart, Star, MessageSquare, BookOpen, Check } from "lucide-react";
 import AppShell from "@/components/AppShell";
-import Btn from "@/components/ui/Btn";
-import { getBookDNA, BookDNA, getBookInfo, BookDetails, searchOpenLibrary, ExternalBookResult } from "@/lib/api";
+import GenreTag from "@/components/ui/GenreTag";
+import { useShelf } from "@/hooks/useShelf";
+import {
+  getBookDNA,
+  getBookInfo,
+  getRelatedBooks,
+  normalizeWorkKey,
+  BookDNA,
+  BookDetails,
+  ExternalBookResult,
+} from "@/lib/api";
 
-const DUMMY_REVIEWS = Array.from({ length: 5 }, () => ({
-  name: "Firstname",
-  reviewCount: 2143,
-  followers: 175,
-  text: "2024: Each time I read what PBS dubs the perfect American novel, my heart fills just a little more. There are few books where the beginning paragraphs hit a home run for me, and this is one of them. It has been a long month filled with family time and endless cooking so for the last ten days I",
-}));
+type Tab = "reviews" | "similar";
 
-/* Sentiment arc — peaks go well above midline, valleys dip below */
-const SENTIMENT_PTS = [
-  [0, 48], [10, 82], [22, 38], [35, 88], [48, 30],
-  [60, 80], [72, 42], [85, 90], [100, 58],
-];
-
-function EmotionalDNA({
-  pacing,
-  themes,
-  sentimentPoints = SENTIMENT_PTS,
-  pacingLabel = "SLOW-BURN",
-}: {
-  pacing: number;
-  themes: string[];
-  sentimentPoints?: number[][];
-  pacingLabel?: string;
-}) {
-  const W = 500, H = 96;
+/**
+ * Sentiment arc, pacing and themes for an analysed book.
+ *
+ * This only renders when real DNA exists. It previously fell back to a
+ * hardcoded arc and a 35% pacing bar, so every un-analysed book displayed an
+ * invented emotional profile as if it were measured.
+ */
+function EmotionalDNA({ dna }: { dna: BookDNA }) {
+  const W = 500;
+  const H = 96;
   const mid = H * 0.55;
-  const pts = sentimentPoints.map(([x, y]) => `${(x / 100) * W},${H - (y / 100) * H}`).join(" ");
+
+  const points = useMemo(() => {
+    const series = dna.arc.sentiment_series;
+    if (series.length === 0) return "";
+    return series
+      .map((value, i) => {
+        const x = series.length > 1 ? (i / (series.length - 1)) * W : W / 2;
+        // sentiment runs -1..1; map onto the plot height
+        const y = H - ((value + 1) / 2) * H;
+        return `${x},${y}`;
+      })
+      .join(" ");
+  }, [dna]);
+
+  const pacing = Math.round(dna.style_profile.avg_pacing * 100);
+  const pacingLabel = pacing >= 70 ? "FAST" : pacing >= 40 ? "MODERATE" : "SLOW-BURN";
+  const themes = dna.theme_profile.top.map((t) => t.theme);
 
   return (
-    <div className="bg-stone-50 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] outline-1 -outline-offset-1 outline-black p-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
+    <div className="bg-stone-50 pop-lg edge-thin p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <span className="text-base font-semibold font-sans">Emotional DNA</span>
-        <div className="flex items-center gap-2 text-xs font-medium font-mono text-zinc-500">
-          <span>SENTIMENT ARC</span>
-          <div className="w-1 h-1 bg-black rounded-full" />
-          <span>PACING</span>
-          <div className="w-1 h-1 bg-black rounded-full" />
-          <span>THEMES</span>
-        </div>
+        <span className="text-xs font-medium font-mono text-zinc-500 uppercase tracking-wide">
+          {dna.emotion_profile.arc_label}
+        </span>
       </div>
 
       <div className="relative w-full" style={{ height: H }}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full h-full"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={`Sentiment arc: ${dna.emotion_profile.beginning_emotion} at the start, ${dna.emotion_profile.middle_emotion} in the middle, ${dna.emotion_profile.end_emotion} by the end.`}
+        >
           <line x1="0" y1={mid} x2={W} y2={mid} stroke="#a3a3a3" strokeWidth="2.5" strokeDasharray="9 5" />
           <polyline
-            points={pts}
+            points={points}
             fill="none"
-            stroke="#ec4899"
+            stroke="var(--brand)"
             strokeWidth="3.5"
             strokeLinejoin="round"
             strokeLinecap="round"
           />
         </svg>
-        <div
-          className="absolute pointer-events-none"
-          style={{ left: 12, right: 12, top: Math.round(mid - 4), height: 64 }}
-        />
       </div>
 
       <div className="flex justify-between text-xs font-bold font-mono">
@@ -73,48 +84,40 @@ function EmotionalDNA({
 
       <div className="flex items-center gap-2.5">
         <span className="text-sm font-semibold font-mono shrink-0">PACING</span>
-        <div className="flex-1 h-7 rounded-sm outline-1 -outline-offset-1 outline-black flex overflow-hidden">
-          <div className="bg-red-500 h-full" style={{ width: `${Math.max(0, Math.min(100, pacing))}%` }} />
+        <div className="flex-1 h-7 rounded-sm edge-thin flex overflow-hidden">
+          <div className="bg-brand h-full" style={{ width: `${Math.max(0, Math.min(100, pacing))}%` }} />
           <div className="bg-white flex-1 h-full" />
         </div>
         <span className="text-sm font-semibold font-mono shrink-0">{pacingLabel}</span>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {themes.length === 0 ? (
-          <span className="text-sm font-semibold font-mono text-zinc-400">No themes yet</span>
-        ) : (
-          themes.map((t) => (
+      {themes.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {themes.map((theme) => (
             <span
-              key={t}
-              className="h-8 px-6 py-2 bg-white rounded-md outline-2 -outline-offset-2 outline-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-sm font-semibold font-mono inline-flex items-center"
+              key={theme}
+              className="h-8 px-4 bg-white rounded-md edge pop text-sm font-semibold font-mono inline-flex items-center"
             >
-              {t}
+              {theme}
             </span>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function pacingLabelFromValue(pacing: number): string {
-  if (pacing >= 70) return "FAST";
-  if (pacing >= 40) return "MODERATE";
-  return "SLOW-BURN";
-}
-
 export default function BookDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const { isSaved, toggle } = useShelf();
 
   const [book, setBook] = useState<BookDetails | null>(null);
   const [dna, setDna] = useState<BookDNA | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<ExternalBookResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [tab, setTab] = useState<Tab>("similar");
+  const [related, setRelated] = useState<ExternalBookResult[] | null>(null);
 
   useEffect(() => {
     if (!id) {
@@ -137,8 +140,12 @@ export default function BookDetailPage() {
         // DNA only exists for ingested numeric book ids.
         const numericId = Number(bookData.id);
         if (Number.isInteger(numericId) && bookData.source === "database") {
-          const dnaData = await getBookDNA(numericId);
-          if (!cancelled) setDna(dnaData);
+          try {
+            const dnaData = await getBookDNA(numericId);
+            if (!cancelled) setDna(dnaData);
+          } catch {
+            if (!cancelled) setDna(null);
+          }
         } else {
           setDna(null);
         }
@@ -153,64 +160,48 @@ export default function BookDetailPage() {
       }
     }
 
-    loadBook();
+    void loadBook();
     return () => {
       cancelled = true;
     };
   }, [id]);
 
+  // Related books, once we know the subject to search on.
   useEffect(() => {
-    const trimmed = searchQuery.trim();
-    if (trimmed.length < 2) {
-      setSearchResults([]);
-      setSearchOpen(false);
+    if (!book?.genre) {
+      setRelated([]);
       return;
     }
-
     let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setSearching(true);
-      searchOpenLibrary(trimmed, 8)
-        .then((results) => {
-          if (!cancelled) {
-            setSearchResults(results);
-            setSearchOpen(true);
-          }
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setSearchResults([]);
-            setSearchOpen(false);
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, 300);
-
+    getRelatedBooks(book.genre, book.openLibraryKey ?? String(book.id), 8)
+      .then((results) => {
+        if (!cancelled) setRelated(results);
+      })
+      .catch(() => {
+        if (!cancelled) setRelated([]);
+      });
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [book]);
 
-  const sentimentPoints = dna
-    ? dna.arc.sentiment_series.map((v, i, arr) => [
-        arr.length > 1 ? (i / (arr.length - 1)) * 100 : 50,
-        ((v + 1) / 2) * 100,
-      ])
-    : undefined;
+  const shelfKey = book?.openLibraryKey ?? (book ? `/works/${book.id}` : null);
+  const saved = isSaved(shelfKey);
 
-  const pacingValue = dna ? Math.round(dna.style_profile.avg_pacing * 100) : 35;
-  const themeList =
-    dna && dna.theme_profile.top.length > 0
-      ? dna.theme_profile.top.map((t) => t.theme)
-      : [];
+  function toggleShelf() {
+    if (!book || !shelfKey) return;
+    void toggle({
+      key: shelfKey,
+      title: book.title,
+      author: book.author,
+      coverUrl: book.coverUrl,
+    });
+  }
 
   if (loading) {
     return (
-      <AppShell fixedHeight>
-        <div className="flex-1 flex items-center justify-center">
+      <AppShell>
+        <div className="flex-1 flex items-center justify-center py-24">
           <p className="text-lg font-semibold font-sans text-zinc-500">Loading book…</p>
         </div>
       </AppShell>
@@ -219,193 +210,216 @@ export default function BookDetailPage() {
 
   if (error || !book) {
     return (
-      <AppShell fixedHeight>
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 px-8">
-          <p className="text-lg font-bold font-sans text-zinc-800">Couldn&apos;t load this book</p>
-          <p className="text-sm font-semibold font-sans text-zinc-500">{error ?? "Unknown error"}</p>
+      <AppShell>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 py-24 text-center">
+          <p className="text-2xl font-bold font-sans">We couldn&apos;t load this book</p>
+          <p className="text-base font-semibold font-sans text-zinc-500 max-w-md">
+            {error ?? "Unknown error"}
+          </p>
+          <Link
+            href="/home"
+            className="mt-2 h-11 px-6 rounded-lg bg-brand text-white edge pop press inline-flex items-center text-base font-semibold font-sans"
+          >
+            Back to Browse
+          </Link>
         </div>
       </AppShell>
     );
   }
 
-  async function findBook() {
-    const trimmedQuery = searchQuery.trim();
-    if (!trimmedQuery) return;
-
-    try {
-      setSearching(true);
-      const results = await searchOpenLibrary(trimmedQuery, 8);
-      setSearchResults(results);
-      setSearchOpen(true);
-    } catch (err) {
-      console.error("Search failed", err);
-      setSearchResults([]);
-      setSearchOpen(false);
-    } finally {
-      setSearching(false);
-    }
-  }
-
   return (
     <AppShell fixedHeight>
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-1/2 shrink-0 bg-amber-300 overflow-y-auto">
-          <div className="p-10 flex flex-col gap-8">
-            <div className="flex gap-8 items-start">
+      <div className="flex flex-1 flex-col lg:flex-row lg:overflow-hidden">
+        {/* ── Book ─────────────────────────────────────────── */}
+        <div className="w-full lg:w-1/2 shrink-0 bg-amber-300 lg:overflow-y-auto border-b-2 lg:border-b-0 border-black">
+          <div className="p-6 sm:p-8 lg:p-10 flex flex-col gap-8">
+            <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 items-start">
               {book.coverUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={book.coverUrl}
-                  alt={book.title}
-                  className="w-44 h-64 object-cover shrink-0 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] border-2 border-black"
+                  alt={`Cover of ${book.title}`}
+                  className="w-36 h-54 sm:w-44 sm:h-64 object-cover shrink-0 pop border-2 border-black"
                 />
               ) : (
-                <div className="w-44 h-64 shrink-0 bg-amber-200 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] border-2 border-black" />
+                <div className="w-36 h-54 sm:w-44 sm:h-64 shrink-0 bg-amber-200 pop border-2 border-black flex items-center justify-center">
+                  <BookOpen className="w-10 h-10 text-amber-800/50" aria-hidden />
+                </div>
               )}
 
-              <div className="flex flex-col gap-3 pt-2 min-w-0 flex-1">
-                <h1 className="text-5xl font-medium font-serif italic leading-tight">
+              <div className="flex flex-col gap-3 min-w-0 flex-1">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-medium font-serif italic leading-tight text-balance">
                   {book.title}
                 </h1>
 
                 <p className="text-base font-bold font-sans">{book.author}</p>
 
                 {book.rating != null && (
-                  <div className="flex items-center gap-1.5">
-                    <Star className="w-5 h-5 text-black" strokeWidth={1.5} />
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Star className="w-5 h-5 fill-black text-black" strokeWidth={1.5} aria-hidden />
                     <span className="text-base font-bold font-sans">{book.rating.toFixed(2)}</span>
                     {book.ratings != null && (
-                      <span className="text-base font-semibold font-sans text-pink-500">
-                        {book.ratings.toLocaleString()} Ratings
+                      <span className="text-base font-semibold font-sans text-amber-900">
+                        {book.ratings.toLocaleString()} ratings
                       </span>
                     )}
                   </div>
                 )}
 
-                {book.genre && (
-                  <span className="self-start px-4 py-1 rounded-md border border-black text-sm font-semibold font-sans">
-                    {book.genre}
-                  </span>
-                )}
+                {book.genre && <GenreTag genre={book.genre} size="sm" className="self-start" />}
 
-                <div className="flex items-center justify-between mt-1">
-                  <Btn variant="primary" size="lg">Want to Read</Btn>
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
                   <button
-                    className="w-11 h-11 rounded-lg border-2 border-pink-400 bg-white/50 flex items-center justify-center shadow-[4px_4px_0px_0px_rgba(0,0,0,0.15)]"
-                    aria-label="Favorite"
+                    type="button"
+                    onClick={toggleShelf}
+                    aria-pressed={saved}
+                    className={`h-11 px-6 rounded-lg edge pop press inline-flex items-center gap-2 text-base font-semibold font-sans cursor-pointer ${
+                      saved ? "bg-white text-black" : "bg-brand text-white"
+                    }`}
                   >
-                    <Heart className="w-5 h-5 text-pink-400" strokeWidth={2} />
+                    {saved && <Check className="w-4 h-4" strokeWidth={3} aria-hidden />}
+                    {saved ? "On your shelf" : "Want to read"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={toggleShelf}
+                    aria-pressed={saved}
+                    aria-label={saved ? "Remove from your shelf" : "Save to your shelf"}
+                    className="w-11 h-11 rounded-lg bg-white edge pop press flex items-center justify-center cursor-pointer"
+                  >
+                    <Heart
+                      className={`w-5 h-5 ${saved ? "text-brand-strong" : "text-black"}`}
+                      fill={saved ? "currentColor" : "none"}
+                      strokeWidth={2}
+                    />
                   </button>
                 </div>
               </div>
             </div>
 
             <div>
-              <h2 className="text-3xl font-bold font-sans text-amber-600 mb-3">Description</h2>
-              <p className="text-base font-bold font-sans leading-relaxed text-amber-950">
+              <h2 className="text-2xl sm:text-3xl font-bold font-sans text-amber-900 mb-3">
+                Description
+              </h2>
+              <p className="text-base font-semibold font-sans leading-relaxed text-amber-950 whitespace-pre-line">
                 {book.description ?? "No description available for this book yet."}
               </p>
             </div>
 
-            <EmotionalDNA
-              pacing={pacingValue}
-              themes={themeList}
-              sentimentPoints={sentimentPoints}
-              pacingLabel={pacingLabelFromValue(pacingValue)}
-            />
-            {!dna && (
-              <p className="text-xs font-mono text-amber-800/70">
-                Emotional DNA appears after a book is ingested and analyzed in Semantica.
-              </p>
+            {dna ? (
+              <EmotionalDNA dna={dna} />
+            ) : (
+              <div className="bg-stone-50 edge-thin pop p-5 flex flex-col gap-2">
+                <p className="text-base font-semibold font-sans">Emotional DNA not available yet</p>
+                <p className="text-sm font-semibold font-sans text-zinc-600 leading-relaxed">
+                  Sentiment arc, pacing, and themes are measured from the book&apos;s
+                  full text. This title hasn&apos;t been ingested and analysed by
+                  Semantica yet, so there&apos;s nothing to show — rather than a
+                  guess.
+                </p>
+              </div>
             )}
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden border-l-2 border-black">
-          <div className="px-8 py-5 flex items-center justify-end gap-8 border-black shrink-0">
-            <button className="text-base font-bold font-sans underline decoration-2 underline-offset-4">
-              REVIEWS
-            </button>
-            <button className="text-base font-bold font-sans">SIMILAR BOOKS</button>
-            <button className="text-base font-bold font-sans">SHOP</button>
+        {/* ── Tabs ─────────────────────────────────────────── */}
+        <div className="flex-1 flex flex-col lg:overflow-hidden lg:border-l-2 border-black">
+          <div
+            role="tablist"
+            aria-label="More about this book"
+            className="px-6 sm:px-8 py-4 flex items-center gap-6 border-b-2 border-black/10 shrink-0"
+          >
+            {(
+              [
+                ["similar", "Similar books"],
+                ["reviews", "Reviews"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                role="tab"
+                aria-selected={tab === value}
+                onClick={() => setTab(value)}
+                className={`text-base font-bold font-sans cursor-pointer ${
+                  tab === value
+                    ? "underline decoration-2 underline-offset-4 decoration-brand"
+                    : "text-zinc-500 hover:text-black transition-colors"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
-          <div className="px-8 py-4 shrink-0">
-            <div className="relative">
-              <div className="h-11 px-4 bg-stone-50 rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] outline-2 -outline-offset-2 outline-black flex items-center gap-2.5">
-                <Search className="w-5 h-5 shrink-0" />
-                <input
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => searchQuery.trim().length >= 2 && setSearchOpen(true)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void findBook();
-                    }
-                  }}
-                  placeholder="Search..."
-                  className="bg-transparent outline-none text-base font-semibold font-sans flex-1 placeholder:text-black/40"
-                />
-                <Btn variant="primary-sm" size="sm" onClick={() => void findBook()} disabled={searching}>
-                  {searching ? "..." : "Search"}
-                </Btn>
-              </div>
-
-              {searchOpen && (
-                <div className="absolute top-full left-0 right-0 mt-2 z-20 max-h-72 overflow-y-auto rounded-lg border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                  {searching ? (
-                    <p className="px-4 py-3 text-sm font-semibold font-sans text-zinc-500">Searching…</p>
-                  ) : searchResults.length > 0 ? (
-                    <div className="divide-y divide-zinc-100">
-                      {searchResults.map((result) => (
-                        <div key={result.key} className="flex items-start gap-3 px-4 py-3 hover:bg-zinc-50">
-                          {result.cover_url ? (
+          <div className="flex-1 lg:overflow-y-auto px-6 sm:px-8 py-6">
+            {tab === "similar" ? (
+              related === null ? (
+                <p className="text-base font-semibold font-sans text-zinc-500">
+                  Finding books like this one…
+                </p>
+              ) : related.length === 0 ? (
+                <p className="text-base font-semibold font-sans text-zinc-600 max-w-md">
+                  We don&apos;t have enough subject data on this title to suggest
+                  neighbours yet.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs font-mono uppercase tracking-wider text-zinc-500 mb-4">
+                    Shares the subject “{book.genre}”
+                  </p>
+                  <ul className="grid grid-cols-2 sm:grid-cols-3 gap-5">
+                    {related.map((item) => (
+                      <li key={item.key}>
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/books/${normalizeWorkKey(item.key)}`)}
+                          className="text-left w-full group cursor-pointer"
+                        >
+                          {item.cover_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={result.cover_url}
-                              alt={result.title}
-                              className="h-16 w-12 object-cover shrink-0 border border-black rounded-sm"
+                              src={item.cover_url}
+                              alt=""
+                              loading="lazy"
+                              className="w-full aspect-[2/3] object-cover pop border-2 border-black transition-transform group-hover:-translate-y-1"
                             />
                           ) : (
-                            <div className="h-16 w-12 shrink-0 border border-black bg-stone-100" />
+                            <div className="w-full aspect-[2/3] bg-zinc-200 pop border-2 border-black flex items-center justify-center">
+                              <BookOpen className="w-7 h-7 text-zinc-400" aria-hidden />
+                            </div>
                           )}
-                          <div className="min-w-0 flex flex-col gap-0.5">
-                            <p className="text-sm font-bold font-sans">{result.title}</p>
-                            <p className="text-sm font-semibold font-sans text-zinc-600">{result.author}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="px-4 py-3 text-sm font-semibold font-sans text-zinc-500">
-                      No books found for this search.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto divide-y divide-zinc-100">
-            {DUMMY_REVIEWS.map((r, i) => (
-              <div key={i} className="flex gap-5 px-8 py-6">
-                <div className="flex flex-col items-center gap-1 shrink-0 w-24 text-center">
-                  <div className="w-12 h-12 bg-black rounded-full mb-1" />
-                  <p className="text-xs font-semibold font-mono">{r.name}</p>
-                  <p className="text-xs font-medium font-mono text-zinc-400">{r.reviewCount.toLocaleString()} Reviews</p>
-                  <p className="text-xs font-medium font-mono text-zinc-400">{r.followers}k Followers</p>
-                  <Btn variant="primary" size="sm" className="mt-1.5 w-full">Follow</Btn>
-                </div>
-                <div className="flex-1 flex flex-col gap-1.5 pt-0.5">
-                  <p className="text-sm font-semibold font-sans leading-relaxed text-zinc-700">
-                    {r.text}
-                  </p>
-                  <button className="flex items-center gap-1 text-sm font-semibold font-sans self-start">
-                    Show more <ChevronDown className="w-4 h-4" />
-                  </button>
-                </div>
+                          <p className="mt-3 text-sm font-bold font-sans leading-tight line-clamp-2">
+                            {item.title}
+                          </p>
+                          <p className="text-xs font-semibold font-sans text-zinc-600 truncate">
+                            {item.author}
+                          </p>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )
+            ) : (
+              <div className="max-w-md flex flex-col gap-4">
+                <span className="w-12 h-12 rounded-lg bg-brand-soft edge pop-sm inline-flex items-center justify-center">
+                  <MessageSquare className="w-6 h-6 text-black" aria-hidden />
+                </span>
+                <h3 className="text-xl font-bold font-sans">No reviews yet</h3>
+                <p className="text-base font-semibold font-sans text-zinc-600 leading-relaxed">
+                  Reader reviews are coming to Semantica. Until then, save the book
+                  to your shelf — what you save is what sharpens your matches.
+                </p>
+                <button
+                  type="button"
+                  onClick={toggleShelf}
+                  className="self-start h-11 px-6 rounded-lg bg-white text-black edge pop press inline-flex items-center text-base font-semibold font-sans cursor-pointer"
+                >
+                  {saved ? "Remove from shelf" : "Save to shelf"}
+                </button>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

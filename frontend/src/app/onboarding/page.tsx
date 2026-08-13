@@ -6,7 +6,8 @@ import { Search, BookOpen, Check } from "lucide-react";
 import AppShell from "@/components/AppShell";
 import Btn from "@/components/ui/Btn";
 import GenreTag, { GENRES } from "@/components/ui/GenreTag";
-import { searchOpenLibrary, ExternalBookResult } from "@/lib/api";
+import { searchOpenLibrary, getStarterBooks, ExternalBookResult } from "@/lib/api";
+import { writeTasteProfile } from "@/lib/taste";
 
 const TOTAL_STEPS = 6;
 
@@ -36,8 +37,25 @@ function BookSelectionStep({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ExternalBookResult[]>([]);
+  const [starters, setStarters] = useState<SelectedBook[]>([]);
   const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Default grid: real, currently-popular books resolved at runtime.
+  useEffect(() => {
+    let cancelled = false;
+    getStarterBooks(12)
+      .then((books) => {
+        if (cancelled) return;
+        setStarters(
+          books.map((b) => ({ key: b.key, title: b.title, author: b.author, cover_url: b.cover_url }))
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -55,13 +73,14 @@ function BookSelectionStep({
 
   const isSelected = (key: string) => selected.some((b) => b.key === key);
 
+  const searching = query.trim().length >= 2;
   const displayBooks: SelectedBook[] = results.length > 0
     ? results.map((r) => ({ key: r.key, title: r.title, author: r.author, cover_url: r.cover_url }))
-    : DUMMY_BOOKS;
+    : starters;
 
   return (
     <div className="flex flex-col items-center gap-8 w-full">
-      <h1 className="text-5xl font-bold font-sans text-center max-w-2xl leading-tight">{prompt}</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-sans text-center max-w-2xl leading-tight text-balance">{prompt}</h1>
 
       <div className="h-11 px-4 py-2.5 bg-stone-50 rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] outline-2 -outline-offset-2 outline-black inline-flex items-center gap-2.5 w-full max-w-lg">
         <Search className="w-5 h-5 shrink-0" />
@@ -74,7 +93,21 @@ function BookSelectionStep({
         {loading && <span className="text-xs text-zinc-400 font-mono">...</span>}
       </div>
 
-      <div className="grid grid-cols-6 gap-6 w-full">
+      <p className="text-xs font-mono uppercase tracking-wider text-zinc-500 self-start">
+        {results.length > 0
+          ? `Results for “${query.trim()}”`
+          : searching && !loading
+            ? "No matches — showing popular starting points"
+            : "Popular starting points — or search for any book"}
+      </p>
+
+      {displayBooks.length === 0 && (
+        <p className="text-base font-semibold font-sans text-zinc-500 py-8">
+          {loading ? "Searching…" : "Loading books…"}
+        </p>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 sm:gap-6 w-full">
         {displayBooks.map((book) => {
           const sel = isSelected(book.key);
           return (
@@ -125,17 +158,15 @@ function ChipSelectStep({
   options,
   selected,
   onToggle,
-  multi = true,
 }: {
   prompt: string;
   options: string[];
   selected: string[];
   onToggle: (val: string) => void;
-  multi?: boolean;
 }) {
   return (
     <div className="flex flex-col items-center gap-10 w-full">
-      <h1 className="text-5xl font-bold font-sans text-center max-w-2xl leading-tight">{prompt}</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-sans text-center max-w-2xl leading-tight text-balance">{prompt}</h1>
       <div className="flex flex-wrap gap-3 justify-center max-w-3xl">
         {options.map((opt) => {
           const active = selected.includes(opt);
@@ -163,7 +194,7 @@ function GenreSelectStep({
 }) {
   return (
     <div className="flex flex-col items-center gap-10 w-full">
-      <h1 className="text-5xl font-bold font-sans text-center max-w-2xl leading-tight">
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-sans text-center max-w-2xl leading-tight text-balance">
         What are your preferred genres?
       </h1>
       <div className="flex flex-wrap gap-4 justify-center max-w-3xl">
@@ -184,21 +215,6 @@ function GenreSelectStep({
     </div>
   );
 }
-
-const DUMMY_BOOKS: SelectedBook[] = [
-  { key: "/works/OL82563W", title: "Atmosphere", author: "Taylor Jenkins Reid", cover_url: null },
-  { key: "/works/OL20132558W", title: "The Midnight Library", author: "Matt Haig", cover_url: `https://covers.openlibrary.org/b/id/10982982-M.jpg` },
-  { key: "/works/OL20668678W", title: "The Night Circus", author: "Erin Morgenstern", cover_url: `https://covers.openlibrary.org/b/id/8409688-M.jpg` },
-  { key: "/works/OL17883032W", title: "Circe", author: "Madeline Miller", cover_url: `https://covers.openlibrary.org/b/id/9255912-M.jpg` },
-  { key: "/works/OL20825819W", title: "Where the Crawdads Sing", author: "Delia Owens", cover_url: `https://covers.openlibrary.org/b/id/8459529-M.jpg` },
-  { key: "/works/OL18376187W", title: "The Seven Husbands of Evelyn Hugo", author: "Taylor Jenkins Reid", cover_url: `https://covers.openlibrary.org/b/id/9256490-M.jpg` },
-  { key: "/works/OL27516W", title: "Brave New World", author: "Aldous Huxley", cover_url: `https://covers.openlibrary.org/b/id/8739161-M.jpg` },
-  { key: "/works/OL22832417W", title: "Project Hail Mary", author: "Andy Weir", cover_url: `https://covers.openlibrary.org/b/id/12032488-M.jpg` },
-  { key: "/works/OL8764671W", title: "Klara and the Sun", author: "Kazuo Ishiguro", cover_url: `https://covers.openlibrary.org/b/id/12003856-M.jpg` },
-  { key: "/works/OL1168532W", title: "Crime and Punishment", author: "Fyodor Dostoevsky", cover_url: `https://covers.openlibrary.org/b/id/8739150-M.jpg` },
-  { key: "/works/OL261883W", title: "Pride and Prejudice", author: "Jane Austen", cover_url: `https://covers.openlibrary.org/b/id/8739161-M.jpg` },
-  { key: "/works/OL14860W", title: "Frankenstein", author: "Mary Shelley", cover_url: `https://covers.openlibrary.org/b/id/8406786-M.jpg` },
-];
 
 export default function Onboarding() {
   const router = useRouter();
@@ -232,13 +248,27 @@ export default function Onboarding() {
   }
 
   function handleNext() {
-    if (step < TOTAL_STEPS) { setStep(step + 1); }
-    else { router.push("/home"); }
+    if (step < TOTAL_STEPS) {
+      setStep(step + 1);
+      return;
+    }
+
+    // Persist the profile before leaving — these six answers are the entire
+    // point of onboarding and used to be discarded on this click.
+    writeTasteProfile({
+      favouriteBooks: favBooks,
+      dislikedBooks: dislikedBooks,
+      genres,
+      moods,
+      storyPrefs,
+      emotions,
+    });
+    router.push("/home");
   }
 
   return (
     <AppShell>
-      <main className="flex-1 flex flex-col items-center px-12 py-16 gap-10">
+      <main className="flex-1 flex flex-col items-center px-5 sm:px-8 lg:px-12 py-10 lg:py-16 gap-8 lg:gap-10">
         <div className="flex gap-2">
           {Array.from({ length: TOTAL_STEPS }, (_, i) => (
             <div

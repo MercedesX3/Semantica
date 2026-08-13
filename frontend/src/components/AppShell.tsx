@@ -1,6 +1,7 @@
 import AppNav from "@/components/AppNav";
+import RequireAuth from "@/components/RequireAuth";
 
-/** Shared post-login chrome: identical outer margins + AppNav on every screen. */
+/** Shared post-login chrome: consistent outer margins + AppNav on every screen. */
 export default function AppShell({
   children,
   className = "",
@@ -8,17 +9,23 @@ export default function AppShell({
 }: {
   children: React.ReactNode;
   className?: string;
-  /** Use fixed viewport height (book detail / map-style layouts). */
+  /**
+   * Pin the shell to the viewport (book detail / map-style layouts).
+   * Only applied from `lg` up — on small screens these layouts stack and
+   * need to scroll with the page instead.
+   */
   fixedHeight?: boolean;
 }) {
   const heightClass = fixedHeight
-    ? "h-[calc(100vh-2rem)] overflow-hidden"
-    : "min-h-[calc(100vh-2rem)]";
+    ? "min-h-[calc(100vh-1rem)] lg:h-[calc(100vh-2rem)] lg:overflow-hidden"
+    : "min-h-[calc(100vh-1rem)] lg:min-h-[calc(100vh-2rem)]";
 
   return (
-    <div className={`mx-8 my-4 ${heightClass} flex flex-col bg-white ${className}`}>
+    <div
+      className={`mx-2 my-2 sm:mx-4 lg:mx-8 lg:my-4 ${heightClass} flex flex-col bg-white edge ${className}`}
+    >
       <AppNav />
-      {children}
+      <RequireAuth>{children}</RequireAuth>
     </div>
   );
 }

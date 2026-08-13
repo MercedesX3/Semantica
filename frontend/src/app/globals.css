@@ -1,13 +1,29 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --background: #fffcf5;
+  --foreground: #0a0a0a;
+  --surface: #ffffff;
+  --surface-raised: #fafaf9;
+
+  /* Brand */
+  --brand: #ec4899;
+  --brand-strong: #e1367c;
+  --brand-soft: #f9a8d4;
+  --ink: #000000;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-ink: var(--ink);
+
   --font-sans: var(--font-dm-sans);
   --font-serif: var(--font-eb-garamond);
   --font-mono: var(--font-sometype-mono);
@@ -17,4 +33,86 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Neo-brutalist primitives.
+   The whole product is built from three moves: a hard black
+   outline, an offset drop shadow, and a press-in interaction.
+   Centralised here so shadow/offset values stay consistent.
+   ────────────────────────────────────────────────────────────── */
+
+@utility edge {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+@utility edge-thin {
+  outline: 1px solid var(--ink);
+  outline-offset: -1px;
+}
+
+@utility pop {
+  box-shadow: 4px 4px 0 0 var(--ink);
+}
+
+@utility pop-lg {
+  box-shadow: 8px 8px 0 0 var(--ink);
+}
+
+@utility pop-sm {
+  box-shadow: 2px 2px 0 0 var(--ink);
+}
+
+/* Interactive press: the element travels into its own shadow. */
+@utility press {
+  transition-property: transform, box-shadow, background-color;
+  transition-duration: 120ms;
+  transition-timing-function: ease-out;
+
+  &:hover {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 0 var(--ink);
+  }
+
+  &:active {
+    transform: translate(4px, 4px);
+    box-shadow: none;
+  }
+
+  &:disabled {
+    transform: none;
+    box-shadow: 4px 4px 0 0 var(--ink);
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+/* Consistent, visible keyboard focus across the whole product. */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
+
+/* Hide scrollbars on horizontal book rails without losing scroll. */
+@utility rail {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "semantica-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "3010"],
+      "port": 3010
+    },
+    {
+      "name": "semantica-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "start", "--", "--port", "3020"],
+      "port": 3020
+    }
+  ]
+}
